@@ -16,7 +16,7 @@ on:
       - '.github/workflows/anc-tile-apk.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: quickbuds-anc-tile-${{ github.ref }}
@@ -33,6 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -44,52 +45,46 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare release signing key when configured
-        id: signing
-        env:
-          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
-          KEY_PROPERTIES: ${{ secrets.RELEASE_KEY_PROPERTIES }}
+      - name: Ensure Persistent Release Keystore
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p keystore
 
-          if [[ -n "${KEYSTORE_B64}" && -n "${KEY_PROPERTIES}" ]]; then
-            echo "Release-signing secrets found; using the same signing key as the Build workflow."
-            mkdir -p local/keys
-            printf '%s' "$KEYSTORE_B64" | base64 --decode > local/keys/quickbuds-release.jks
-            test -s local/keys/quickbuds-release.jks
-            printf '%s\n' "$KEY_PROPERTIES" > local/keys/keystore.properties
+          if [ ! -f keystore/release.jks ]; then
+            echo "Generating persistent QuickBuds release keystore..."
+            keytool -genkeypair -v \
+              -keystore keystore/release.jks \
+              -alias quickbuds \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "quickbuds_keystore_pass" \
+              -keypass "quickbuds_keystore_pass" \
+              -dname "CN=QuickBuds, OU=Mobile, O=QuickBuds, L=World, ST=Global, C=US"
 
-            python3 - <<'PY'
-          from pathlib import Path
-          import os
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keystore/release.jks
 
-          props = {}
-          for raw in Path("local/keys/keystore.properties").read_text().splitlines():
-              line = raw.strip()
-              if not line or line.startswith(("#", "!")) or "=" not in line:
-                  continue
-              key, value = line.split("=", 1)
-              props[key.strip()] = value.strip()
-
-          required = ("storePassword", "keyAlias", "keyPassword")
-          missing = [key for key in required if not props.get(key)]
-          if missing:
-              raise SystemExit(
-                  "RELEASE_KEY_PROPERTIES is missing required properties: "
-                  + ", ".join(missing)
-              )
-
-          with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write("QB_KEY_ALIAS=" + props["keyAlias"] + "\n")
-              env.write("QB_STORE_PASSWORD=" + props["storePassword"] + "\n")
-              env.write("QB_KEY_PASSWORD=" + props["keyPassword"] + "\n")
-          PY
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: persist QuickBuds release signing keystore [skip ci]"
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+            fi
           else
-            echo "::warning::Release-signing secrets are missing. The workflow will still build and upload the debug APK, but it will NOT publish a release-signed APK."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Persistent release keystore already exists. Reusing it."
           fi
+
+          test -s keystore/release.jks
+
+          # The app's Gradle build reads this file to configure release signing.
+          mkdir -p local/keys
+          cat > local/keys/keystore.properties <<'PROPERTIES'
+          storeFile=keystore/release.jks
+          storePassword=quickbuds_keystore_pass
+          keyAlias=quickbuds
+          keyPassword=quickbuds_keystore_pass
+          PROPERTIES
 
       - name: Verify Gradle wrapper
         shell: bash
@@ -101,15 +96,10 @@ jobs:
           chmod +x gradlew
           cat gradle/wrapper/gradle-wrapper.properties
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Build Release and Debug APKs
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:assembleDebug
 
-      - name: Build release APK when signing is configured
-        if: steps.signing.outputs.configured == 'true'
-        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
-
-      - name: Sign debug APK with the release key
-        if: steps.signing.outputs.configured == 'true'
+      - name: Sign Debug APK with the persistent release key
         shell: bash
         run: |
           set -euo pipefail
@@ -121,51 +111,47 @@ jobs:
           test -s "$DEBUG_APK"
 
           "$APKSIGNER" sign \
-            --ks local/keys/quickbuds-release.jks \
-            --ks-key-alias "$QB_KEY_ALIAS" \
-            --ks-pass "env:QB_STORE_PASSWORD" \
-            --key-pass "env:QB_KEY_PASSWORD" \
-            --out app/build/outputs/apk/debug/app-debug-shared-signed.apk \
+            --ks keystore/release.jks \
+            --ks-key-alias quickbuds \
+            --ks-pass "pass:quickbuds_keystore_pass" \
+            --key-pass "pass:quickbuds_keystore_pass" \
+            --out app/build/outputs/apk/debug/app-debug-release-signed.apk \
             "$DEBUG_APK"
 
-          mv app/build/outputs/apk/debug/app-debug-shared-signed.apk "$DEBUG_APK"
+          mv app/build/outputs/apk/debug/app-debug-release-signed.apk "$DEBUG_APK"
 
-      - name: Package APKs and checksums
+      - name: Package APKs and verify matching signatures
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
+
           version="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           version="${version:-unknown}"
 
           DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$DEBUG_APK"
+          test -s "$RELEASE_APK"
 
-          if [[ "${{ steps.signing.outputs.configured }}" == "true" ]]; then
-            RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
-            test -s "$RELEASE_APK"
-            cp "$DEBUG_APK" "out/QuickBuds-${version}-ANC-Tile-debug-shared-signature.apk"
-            cp "$RELEASE_APK" "out/QuickBuds-${version}-ANC-Tile-release.apk"
+          cp "$DEBUG_APK" "out/QuickBuds-${version}-ANC-Tile-debug.apk"
+          cp "$RELEASE_APK" "out/QuickBuds-${version}-ANC-Tile-release.apk"
 
-            SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
-            APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-            debug_cert="$("$APKSIGNER" verify --print-certs "out/QuickBuds-${version}-ANC-Tile-debug-shared-signature.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-            release_cert="$("$APKSIGNER" verify --print-certs "out/QuickBuds-${version}-ANC-Tile-release.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-            test -n "$debug_cert"
-            test -n "$release_cert"
-            if [[ "$debug_cert" != "$release_cert" ]]; then
-              echo "Debug/release certificate mismatch; refusing to publish APKs as same-signature." >&2
-              exit 1
-            fi
-            printf 'Signing certificate SHA-256: %s\n' "$release_cert" > out/signature-check.txt
-            echo "Both APKs use the same release signing certificate." >> "$GITHUB_STEP_SUMMARY"
-          else
-            cp "$DEBUG_APK" "out/QuickBuds-${version}-ANC-Tile-debug.apk"
-            echo "Release-signing secrets were not configured. Only a debug APK was produced; it will not update an installation signed with the release key." > out/BUILD-NOTES.txt
-            echo "::notice::Only the debug APK is being published. Add the existing Build workflow signing secrets to produce install-over releases."
-            echo "Only the debug APK was produced because release-signing secrets are missing." >> "$GITHUB_STEP_SUMMARY"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+
+          debug_cert="$("$APKSIGNER" verify --print-certs "out/QuickBuds-${version}-ANC-Tile-debug.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          release_cert="$("$APKSIGNER" verify --print-certs "out/QuickBuds-${version}-ANC-Tile-release.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+
+          test -n "$debug_cert"
+          test -n "$release_cert"
+          if [[ "$debug_cert" != "$release_cert" ]]; then
+            echo "Debug/release certificate mismatch; refusing to publish APKs as matching-signature builds." >&2
+            exit 1
           fi
 
+          printf 'Signing certificate SHA-256: %s\n' "$release_cert" > out/signature-check.txt
           sha256sum out/*.apk > out/SHA256SUMS
           ls -lh out
           cat out/SHA256SUMS
@@ -185,6 +171,7 @@ jobs:
             echo "### QuickBuds ANC Tile build complete"
             echo "- Branch: \`${GITHUB_REF_NAME}\`"
             echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Both APKs were signed with the persistent keystore at \`keystore/release.jks\`."
             echo "- Artifact: \`QuickBuds-ANC-Tile-APKs\`"
             echo "- Artifacts expire after 14 days."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -199,4 +186,4 @@ jobs:
             app/build/outputs/logs/**
             build/reports/**
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
