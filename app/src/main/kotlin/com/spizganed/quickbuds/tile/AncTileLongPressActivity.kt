@@ -163,18 +163,8 @@ class AncTileLongPressActivity : Activity() {
 
     private fun attachFeatureListener(toggle: Switch, feature: Int) {
         toggle.setOnCheckedChangeListener { _, requestedOn ->
-            // Enforce mutual exclusion visually without firing a second, conflicting command.
-            if (requestedOn) {
-                val other = if (feature == Feature.HIRES_CODEC) Feature.SPATIAL_SOUND else Feature.HIRES_CODEC
-                for (i in 0 until root.childCount) {
-                    val child = root.getChildAt(i)
-                    if (child is Switch && child.tag == other) {
-                        child.setOnCheckedChangeListener(null)
-                        child.isChecked = false
-                        attachFeatureListener(child, other)
-                    }
-                }
-            }
+            // Experimental: keep both switches independently selectable. The buds' readback
+            // determines whether the requested combination is actually supported.
             val intent = Intent(this@AncTileLongPressActivity, BudsService::class.java).apply {
                 action = BudsService.ACTION_TILE_SET_FEATURE
                 putExtra(BudsService.EXTRA_TILE_FEATURE, feature)

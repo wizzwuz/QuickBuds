@@ -555,9 +555,10 @@ class BudsService : Service(), BudsConnectionManager.Listener {
     }
 
     /**
-     * Quick Settings floating-panel feature changes. LHDC (the app's Hi-Res feature) and Spatial
-     * Sound are mutually exclusive here. Spatial is written first because that is the order used
-     * by the app/protocol when a codec restart is needed.
+     * Experimental floating-panel feature changes. LHDC (the app's Hi-Res feature) and Spatial
+     * Sound are sent independently: this deliberately does not turn the other feature off. Some
+     * earbud firmware may reject or silently disable one feature; the feature-sync readback remains
+     * authoritative, so this experiment does not claim both are active unless the buds confirm it.
      */
     private fun sendTileFeature(feature: Int, enabled: Boolean) {
         val m = manager
@@ -566,54 +567,17 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             return
         }
         val spatialByType = RowRules.spatialByType(ModelCatalog.current(this)?.json, Capabilities.commands(this))
-        val currentStates = m.featureStates
-        val writes: List<Pair<Int, Int>>
-        val key: Int
-        val restarts: Boolean
-
         if (feature == Feature.SPATIAL_SOUND && spatialByType) {
+            statusLog("[TILE-EXPERIMENT] Spatial type=$enabled; LHDC state left unchanged")
             m.setSpatialType(if (enabled) 1 else 0)
-            if (enabled && currentStates[Feature.HIRES_CODEC] == 1) {
-                handler.postDelayed({
-                    m.requestSetting(
-                        Feature.HIRES_CODEC,
-                        listOf(Feature.HIRES_CODEC to 0),
-                        FeatureSync.Confirm.READ,
-                        restarts = true
-                    )
-                }, 300)
-            }
             return
         }
 
-        if (feature == Feature.HIRES_CODEC && enabled && spatialByType) {
-            m.setSpatialType(0)
-            handler.postDelayed({
-                m.requestSetting(
-                    Feature.HIRES_CODEC,
-                    listOf(Feature.HIRES_CODEC to 1),
-                    FeatureSync.Confirm.READ,
-                    restarts = true
-                )
-            }, 300)
-            return
-        }
-
-        key = feature
-        writes = when {
-            feature == Feature.HIRES_CODEC && enabled -> listOf(
-                Feature.SPATIAL_SOUND to 0,
-                Feature.HIRES_CODEC to 1
-            )
-            feature == Feature.SPATIAL_SOUND && enabled -> listOf(
-                Feature.SPATIAL_SOUND to 1,
-                Feature.HIRES_CODEC to 0
-            )
-            else -> listOf(feature to if (enabled) 1 else 0)
-        }
-        restarts = writes.any { it.first == Feature.HIRES_CODEC }
-        statusLog("[TILE] Feature id=$feature enabled=$enabled writes=$writes")
-        m.requestSetting(key, writes, FeatureSync.Confirm.READ, restarts = restarts)
+        val value = if (enabled) 1 else 0
+        val writes = listOf(feature to value)
+        val restarts = feature == Feature.HIRES_CODEC
+        statusLog("[TILE-EXPERIMENT] Feature id=$feature enabled=$enabled; independent write=$writes")
+        m.requestSetting(feature, writes, FeatureSync.Confirm.READ, restarts = restarts)
     }
 
     /** Send a Quick Settings tile request through the same model-aware ANC controller as the UI. */
