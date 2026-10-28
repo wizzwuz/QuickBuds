@@ -1,0 +1,411 @@
+diff --git a/.github/workflows/anc-tile-apk.yml b/.github/workflows/anc-tile-apk.yml
+index 3064f49..72c0b92 100644
+--- a/.github/workflows/anc-tile-apk.yml
++++ b/.github/workflows/anc-tile-apk.yml
+@@ -3,25 +3,31 @@ name: QuickBuds ANC Tile APK
+ on:
+   workflow_dispatch:
+   push:
+-    branches: [main]
++    branches:
++      - main
++      - 'experimental/**'
+     paths:
+-      - "app/**"
+-      - "gradle/**"
+-      - "gradlew"
+-      - "build.gradle.kts"
+-      - "settings.gradle.kts"
+-      - ".github/workflows/anc-tile-apk.yml"
++      - 'app/**'
++      - 'gradle/**'
++      - 'gradlew'
++      - 'build.gradle.kts'
++      - 'settings.gradle.kts'
++      - '.github/workflows/anc-tile-apk.yml'
+ 
+ permissions:
+   contents: read
+ 
++# Do not cancel a running build when another commit is pushed. Cancelling the
++# job can interrupt Gradle provisioning and prevent the APK artifact upload.
+ concurrency:
+-  group: anc-tile-apk-${{ github.ref }}
+-  cancel-in-progress: true
++  group: quickbuds-anc-tile-${{ github.ref }}
++  cancel-in-progress: false
+ 
+ jobs:
+   build:
++    name: Build debug APK
+     runs-on: ubuntu-24.04
++    timeout-minutes: 45
+     steps:
+       - name: Checkout source
+         uses: actions/checkout@v4
+@@ -30,27 +36,52 @@ jobs:
+         uses: actions/setup-java@v4
+         with:
+           distribution: temurin
+-          java-version: "21"
++          java-version: '21'
++          cache: gradle
+ 
+-      - name: Set up Gradle
++      - name: Set up Gradle caching
+         uses: gradle/actions/setup-gradle@v4
+ 
+-      - name: Build debug APK
++      - name: Verify Gradle wrapper
+         run: |
+-          chmod +x ./gradlew
+-          ./gradlew --no-daemon :app:assembleDebug
++          test -f gradlew
++          test -f gradle/wrapper/gradle-wrapper.jar
++          test -f gradle/wrapper/gradle-wrapper.properties
++          chmod +x gradlew
++          cat gradle/wrapper/gradle-wrapper.properties
++
++      - name: Build debug APK
++        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+ 
+-      - name: Name APK
++      - name: Prepare APK artifact
++        if: success()
+         run: |
++          set -euo pipefail
++          apk='app/build/outputs/apk/debug/app-debug.apk'
++          test -s "$apk"
+           mkdir -p out
+-          version=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
+-          cp app/build/outputs/apk/debug/app-debug.apk "out/QuickBuds-${version:-debug}-ANC-Tile-debug.apk"
++          version=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
++          cp "$apk" "out/QuickBuds-${version:-debug}-ANC-Tile-debug.apk"
+           sha256sum out/*.apk > out/SHA256SUMS
++          ls -lh out
+ 
+       - name: Upload APK artifact
++        if: success()
+         uses: actions/upload-artifact@v4
+         with:
+           name: QuickBuds-ANC-Tile-APK
+           path: out/*
+           if-no-files-found: error
+           retention-days: 14
++
++      - name: Upload build diagnostics if build fails
++        if: failure()
++        uses: actions/upload-artifact@v4
++        with:
++          name: QuickBuds-ANC-Tile-build-diagnostics
++          path: |
++            app/build/reports/**
++            app/build/outputs/logs/**
++            build/reports/**
++          if-no-files-found: ignore
++          retention-days: 7
+diff --git a/EXPERIMENTAL-ANC-TILE.md b/EXPERIMENTAL-ANC-TILE.md
+new file mode 100644
+index 0000000..f282403
+--- /dev/null
++++ b/EXPERIMENTAL-ANC-TILE.md
+@@ -0,0 +1,15 @@
++# Experimental three-mode Quick Settings tile
++
++Branch name intended for this change: `experimental/anc-three-mode-tile`
++
++## Changes
++
++- A single tap cycles through ANC -> Normal -> Transparency -> ANC.
++- The tile subtitle reflects the active noise-control mode.
++- A long press routes through Android's `ACTION_QS_TILE_PREFERENCES` handler. While ANC is active it shows a compact, app-themed picker for Smart / High / Low / Medium. Modes unsupported by the connected model are disabled rather than sending an unverified command.
++- While Normal or Transparency is active, a long press opens the QuickBuds main screen instead of App Info.
++- The APK workflow is configured to run on `experimental/**` branches as well as `main`.
++
++## Important validation note
++
++The Android manifest was XML-validated. A local Gradle build could not run in this environment because the Gradle 9.6.0 distribution could not be downloaded (`UnknownHostException: services.gradle.org`). This source is **not yet build-verified**; use the GitHub Actions workflow on the experimental branch to get the authoritative compile result and APK artifact.
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 2a2fc65..97e5b55 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -206,7 +206,7 @@
+         <!-- System Quick Settings tile: toggles ANC using BudsService's existing protocol path. -->
+         <service
+             android:name=".tile.AncQuickSettingsTileService"
+-            android:label="ANC"
++            android:label="Noise control"
+             android:icon="@drawable/ic_anc"
+             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+             android:exported="true">
+@@ -215,6 +215,18 @@
+             </intent-filter>
+         </service>
+ 
++        <!-- Long-press preferences route: shows the themed ANC strength picker or opens the app. -->
++        <activity
++            android:name=".tile.AncTileLongPressActivity"
++            android:exported="true"
++            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
++            android:launchMode="singleTop">
++            <intent-filter>
++                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
++                <category android:name="android.intent.category.DEFAULT" />
++            </intent-filter>
++        </activity>
++
+         <service
+             android:name=".bluetooth.BudsService"
+             android:foregroundServiceType="connectedDevice"
+diff --git a/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncQuickSettingsTileService.kt b/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncQuickSettingsTileService.kt
+index 057d624..34d932c 100644
+--- a/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncQuickSettingsTileService.kt
++++ b/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncQuickSettingsTileService.kt
+@@ -3,21 +3,16 @@ package com.spizganed.quickbuds.tile
+ import android.content.ComponentName
+ import android.content.Context
+ import android.content.Intent
++import android.graphics.drawable.Icon
+ import android.os.Build
+ import android.service.quicksettings.Tile
+ import android.service.quicksettings.TileService
+-import android.graphics.drawable.Icon
+ import com.spizganed.quickbuds.R
+ import com.spizganed.quickbuds.bluetooth.BudsService
+ import com.spizganed.quickbuds.protocol.AncModes
+ import com.spizganed.quickbuds.widget.WidgetStateStore
+ 
+-/**
+- * Quick Settings tile for toggling the earbuds between ANC and Off.
+- *
+- * The command is handled by BudsService so it reuses the app's model-aware protocol,
+- * RFCOMM connection, and state updates instead of sending guessed Bluetooth packets.
+- */
++/** Three-state Quick Settings cycle: ANC -> Normal -> Transparency -> ANC. */
+ class AncQuickSettingsTileService : TileService() {
+ 
+     override fun onStartListening() {
+@@ -27,58 +22,63 @@ class AncQuickSettingsTileService : TileService() {
+ 
+     override fun onClick() {
+         super.onClick()
+-        val state = WidgetStateStore.read(this)
+-        val ancIsOn = state.ancMode != AncModes.OFF &&
+-            state.ancMode != AncModes.TRANSPARENCY
+-
+-        val target = if (ancIsOn) {
+-            AncModes.OFF
+-        } else {
+-            val modes = AncModes.of(this)
+-            when {
+-                modes.supports("ANC-Medium") -> "ANC-Medium"
+-                modes.levels.isNotEmpty() -> modes.levels.first()
+-                else -> "ANC-Medium"
+-            }
++        val current = WidgetStateStore.read(this).ancMode
++        val modes = AncModes.of(this)
++        val target = when {
++            isAnc(current) -> AncModes.OFF
++            current == AncModes.OFF -> if (modes.supports(AncModes.TRANSPARENCY)) AncModes.TRANSPARENCY else firstAncMode(modes)
++            current == AncModes.TRANSPARENCY -> firstAncMode(modes)
++            else -> firstAncMode(modes)
+         }
++        requestMode(target)
++        updateTileForMode(target)
++    }
++
++    private fun firstAncMode(modes: AncModes): String = when {
++        modes.supports(AncModes.SMART) -> AncModes.SMART
++        modes.supports("ANC-Medium") -> "ANC-Medium"
++        modes.levels.isNotEmpty() -> modes.levels.first()
++        else -> "ANC-Medium"
++    }
+ 
++    private fun requestMode(mode: String) {
+         val serviceIntent = Intent(this, BudsService::class.java).apply {
+             action = BudsService.ACTION_TILE_SET_ANC
+-            putExtra(BudsService.EXTRA_TILE_ANC_MODE, target)
++            putExtra(BudsService.EXTRA_TILE_ANC_MODE, mode)
+         }
+         try {
+-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+-                startForegroundService(serviceIntent)
+-            } else {
+-                startService(serviceIntent)
+-            }
+-            // Immediate feedback; BudsService refreshes this tile after the buds report their mode.
+-            qsTile?.state = if (target == AncModes.OFF) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
+-            qsTile?.label = "ANC"
+-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+-                qsTile?.subtitle = if (target == AncModes.OFF) "Off" else "On"
+-            }
+-            qsTile?.updateTile()
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
++            else startService(serviceIntent)
+         } catch (_: Exception) {
+-            // Do not crash System UI if Android blocks the service start. The next listening
+-            // pass restores the tile from the last mode the earbuds reported.
++            // System UI must not crash if Android blocks a background service start.
+             updateTileFromStoredState()
+         }
+     }
+ 
+-    private fun updateTileFromStoredState() {
++    private fun updateTileFromStoredState() = updateTileForMode(WidgetStateStore.read(this).ancMode)
++
++    private fun updateTileForMode(mode: String) {
+         val tile = qsTile ?: return
+-        val mode = WidgetStateStore.read(this).ancMode
+-        val active = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
+-        tile.label = "ANC"
++        tile.label = "Noise control"
+         tile.icon = Icon.createWithResource(this, R.drawable.ic_anc)
+-        tile.state = if (active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
++        tile.state = if (mode == AncModes.OFF) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+-            tile.subtitle = if (active) "On" else "Off"
++            tile.subtitle = when {
++                mode == AncModes.OFF -> "Normal"
++                mode == AncModes.TRANSPARENCY -> "Transparency"
++                else -> "ANC"
++            }
++        }
++        tile.contentDescription = when {
++            mode == AncModes.OFF -> "Noise control: Normal"
++            mode == AncModes.TRANSPARENCY -> "Noise control: Transparency"
++            else -> "Noise control: ANC"
+         }
+         tile.updateTile()
+     }
+ 
++    private fun isAnc(mode: String): Boolean = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
++
+     companion object {
+         /** Ask System UI to reread the last device-reported mode after an ANC state change. */
+         fun requestRefresh(context: Context) {
+diff --git a/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncTileLongPressActivity.kt b/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncTileLongPressActivity.kt
+new file mode 100644
+index 0000000..83387bc
+--- /dev/null
++++ b/app/src/main/kotlin/com/spizganed/quickbuds/tile/AncTileLongPressActivity.kt
+@@ -0,0 +1,120 @@
++package com.spizganed.quickbuds.tile
++
++import android.app.Activity
++import android.content.Intent
++import android.graphics.Color
++import android.graphics.drawable.GradientDrawable
++import android.os.Build
++import android.os.Bundle
++import android.view.Gravity
++import android.view.View
++import android.view.WindowManager
++import android.widget.LinearLayout
++import android.widget.TextView
++import com.spizganed.quickbuds.R
++import com.spizganed.quickbuds.bluetooth.BudsService
++import com.spizganed.quickbuds.protocol.AncModes
++import com.spizganed.quickbuds.ui.MainActivity
++import com.spizganed.quickbuds.ui.ThemeRes
++import com.spizganed.quickbuds.widget.WidgetStateStore
++
++/**
++ * Android routes a long-press on a QS tile through ACTION_QS_TILE_PREFERENCES.
++ * ANC opens a compact themed mode picker; Normal/Transparency open the main app.
++ */
++class AncTileLongPressActivity : Activity() {
++    override fun onCreate(savedInstanceState: Bundle?) {
++        ThemeRes.select(this)
++        super.onCreate(savedInstanceState)
++
++        val mode = WidgetStateStore.read(this).ancMode
++        val isAnc = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
++        if (!isAnc) {
++            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
++            finish()
++            return
++        }
++
++        window.setBackgroundDrawableResource(android.R.color.transparent)
++        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
++        window.decorView.setBackgroundColor(Color.TRANSPARENT)
++        window.attributes = window.attributes.apply {
++            width = dp(320)
++            height = WindowManager.LayoutParams.WRAP_CONTENT
++            gravity = Gravity.CENTER
++            dimAmount = 0.42f
++            flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
++        }
++
++        val palette = ThemeRes.palette(this)
++        val root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(18), dp(20), dp(16))
++            background = GradientDrawable().apply {
++                setColor(palette.card)
++                cornerRadius = dp(28).toFloat()
++                setStroke(dp(1), palette.outline)
++            }
++        }
++        root.addView(TextView(this).apply {
++            text = "ANC mode"
++            textSize = 19f
++            setTextColor(palette.text)
++            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
++            gravity = Gravity.CENTER_VERTICAL
++        }, LinearLayout.LayoutParams(-1, dp(34)))
++        root.addView(TextView(this).apply {
++            text = "Choose noise cancellation strength"
++            textSize = 13f
++            setTextColor(palette.textSecondary)
++            setPadding(0, dp(2), 0, dp(10))
++        })
++
++        val modes = AncModes.of(this)
++        val choices = listOf(
++            "Smart" to AncModes.SMART,
++            "High" to "ANC-Deep",
++            "Low" to "ANC-Light",
++            "Medium" to "ANC-Medium"
++        )
++        choices.forEach { (label, value) ->
++            val supported = modes.supports(value)
++            val selected = mode == value
++            val row = TextView(this).apply {
++                text = label + if (selected) "  ✓" else ""
++                textSize = 16f
++                gravity = Gravity.CENTER_VERTICAL
++                setPadding(dp(14), 0, dp(14), 0)
++                setTextColor(if (supported) palette.text else palette.textSecondary)
++                alpha = if (supported) 1f else 0.38f
++                background = GradientDrawable().apply {
++                    setColor(if (selected) palette.tonal else Color.TRANSPARENT)
++                    cornerRadius = dp(16).toFloat()
++                    if (selected) setStroke(dp(1), palette.accent)
++                }
++                isEnabled = supported
++                isClickable = supported
++                setOnClickListener {
++                    val serviceIntent = Intent(this@AncTileLongPressActivity, BudsService::class.java).apply {
++                        action = BudsService.ACTION_TILE_SET_ANC
++                        putExtra(BudsService.EXTRA_TILE_ANC_MODE, value)
++                    }
++                    try {
++                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
++                        else startService(serviceIntent)
++                    } catch (_: Exception) {
++                        // The picker closes cleanly; the tile refreshes from the device state next time.
++                    }
++                    finish()
++                }
++            }
++            val lp = LinearLayout.LayoutParams(-1, dp(48))
++            lp.topMargin = dp(4)
++            root.addView(row, lp)
++        }
++        root.setOnClickListener { /* Keep taps on card padding from dismissing the picker. */ }
++        setContentView(root)
++    }
++
++    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
++}
