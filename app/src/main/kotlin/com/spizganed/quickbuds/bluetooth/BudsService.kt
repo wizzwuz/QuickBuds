@@ -1,6 +1,7 @@
 package com.spizganed.quickbuds.bluetooth
 
 import com.spizganed.quickbuds.protocol.ModelCatalog
+import com.spizganed.quickbuds.tile.AncQuickSettingsTileService
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -529,7 +530,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         statusLog("[SVC] ANC mode (from buds): $mode")
         WidgetStateStore.write(this, st)
         AncWidgetProvider.refreshAll(this)
-        com.spizganed.quickbuds.tile.AncQuickSettingsTileService.requestRefresh(this)
+        AncQuickSettingsTileService.requestRefresh(this)
     }
 
     /** Send a Quick Settings tile request through the same model-aware ANC controller as the UI. */
@@ -554,7 +555,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         st.ancMode = target
         WidgetStateStore.write(this, st)
         AncWidgetProvider.refreshAll(this)
-        com.spizganed.quickbuds.tile.AncQuickSettingsTileService.requestRefresh(this)
+        AncQuickSettingsTileService.requestRefresh(this)
     }
 
     companion object {
