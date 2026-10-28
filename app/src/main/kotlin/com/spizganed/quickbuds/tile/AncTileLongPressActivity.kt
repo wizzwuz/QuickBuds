@@ -29,6 +29,7 @@ class AncTileLongPressActivity : Activity() {
     private lateinit var palette: Palette
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeRes.select(this)
         super.onCreate(savedInstanceState)
         palette = ThemeRes.palette(this)
         configureWindow()
