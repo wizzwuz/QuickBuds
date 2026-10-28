@@ -3,25 +3,30 @@ name: QuickBuds ANC Tile APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - "app/**"
-      - "gradle/**"
-      - "gradlew"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - ".github/workflows/anc-tile-apk.yml"
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - '.github/workflows/anc-tile-apk.yml'
 
 permissions:
   contents: read
 
+# Do not cancel a running build when another commit is pushed. Cancelling the
+# job can interrupt Gradle provisioning and prevent the APK artifact upload.
 concurrency:
-  group: anc-tile-apk-${{ github.ref }}
-  cancel-in-progress: true
+  group: quickbuds-anc-tile-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: Build debug APK
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -30,27 +35,52 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
+          cache: gradle
 
-      - name: Set up Gradle
+      - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Verify Gradle wrapper
         run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon :app:assembleDebug
+          test -f gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+          cat gradle/wrapper/gradle-wrapper.properties
 
-      - name: Name APK
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Prepare APK artifact
+        if: success()
         run: |
+          set -euo pipefail
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
           mkdir -p out
-          version=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
-          cp app/build/outputs/apk/debug/app-debug.apk "out/QuickBuds-${version:-debug}-ANC-Tile-debug.apk"
+          version=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          cp "$apk" "out/QuickBuds-${version:-debug}-ANC-Tile-debug.apk"
           sha256sum out/*.apk > out/SHA256SUMS
+          ls -lh out
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: QuickBuds-ANC-Tile-APK
           path: out/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload build diagnostics if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickBuds-ANC-Tile-build-diagnostics
+          path: |
+            app/build/reports/**
+            app/build/outputs/logs/**
+            build/reports/**
+          if-no-files-found: ignore
+          retention-days: 7
