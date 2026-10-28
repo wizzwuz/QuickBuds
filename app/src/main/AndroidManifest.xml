@@ -203,6 +203,18 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- System Quick Settings tile: toggles ANC using BudsService's existing protocol path. -->
+        <service
+            android:name=".tile.AncQuickSettingsTileService"
+            android:label="ANC"
+            android:icon="@drawable/ic_anc"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".bluetooth.BudsService"
             android:foregroundServiceType="connectedDevice"

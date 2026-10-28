@@ -38,6 +38,9 @@ class BudsService : Service(), BudsConnectionManager.Listener {
 
     private val handler = Handler(Looper.getMainLooper())
 
+    /** ANC mode requested from the Quick Settings tile while the RFCOMM link is being opened. */
+    private var pendingTileAncMode: String? = null
+
     /** The delayed ACL connect (KeepAliveReceiver), so a deliberate disconnect cancels it. */
     private var aclConnect: Runnable? = null
 
@@ -156,6 +159,18 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 BudsDevice.find(this)?.let { manager?.setPhoneAudio(it, on = false) }
             }
             ACTION_TOGGLE_BRIDGE -> manager?.setBridge(!RfcommBridge.running)
+            ACTION_TILE_SET_ANC -> {
+                val mode = intent.getStringExtra(EXTRA_TILE_ANC_MODE)
+                if (mode == null) {
+                    statusLog("[TILE] Missing ANC mode; ignored")
+                } else if (manager?.isConnected() == true) {
+                    sendTileAncMode(mode)
+                } else {
+                    statusLog("[TILE] Not connected; queue ANC $mode and connect")
+                    pendingTileAncMode = mode
+                    forceConnect(withAudio = false, user = true)
+                }
+            }
             ACTION_WIDGET_COMMAND -> {
                 statusLog("<< startService WIDGET_COMMAND")
                 if (manager?.isConnected() == true) {
@@ -399,6 +414,12 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         WidgetStateStore.write(this, st)
         if (before.connected != connected) AncWidgetProvider.animate(this, connected, before.takeIf { it.connected })
         else AncWidgetProvider.refreshAll(this)
+        if (connected) {
+            pendingTileAncMode?.let { mode ->
+                pendingTileAncMode = null
+                sendTileAncMode(mode)
+            }
+        }
         gameEq.update()
     }
 
@@ -508,6 +529,32 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         statusLog("[SVC] ANC mode (from buds): $mode")
         WidgetStateStore.write(this, st)
         AncWidgetProvider.refreshAll(this)
+        com.spizganed.quickbuds.tile.AncQuickSettingsTileService.requestRefresh(this)
+    }
+
+    /** Send a Quick Settings tile request through the same model-aware ANC controller as the UI. */
+    private fun sendTileAncMode(mode: String) {
+        if (manager?.isConnected() != true) {
+            statusLog("[TILE] ANC $mode not sent: still disconnected")
+            return
+        }
+        val modes = AncModes.of(this)
+        val target = when {
+            mode == AncModes.OFF -> AncModes.OFF
+            modes.supports(mode) -> mode
+            else -> modes.levels.firstOrNull()
+        }
+        if (target == null) {
+            statusLog("[TILE] ANC $mode not sent: this model has no known ANC mode table")
+            return
+        }
+        statusLog("[TILE] Sending ANC mode $target")
+        manager?.sendAnc(target)
+        val st = WidgetStateStore.read(this)
+        st.ancMode = target
+        WidgetStateStore.write(this, st)
+        AncWidgetProvider.refreshAll(this)
+        com.spizganed.quickbuds.tile.AncQuickSettingsTileService.requestRefresh(this)
     }
 
     companion object {
@@ -524,6 +571,8 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         const val ACTION_FORCE_DISCONNECT = "com.spizganed.quickbuds.FORCE_DISCONNECT"
         /** Dev tools › Bridge on/off ([RfcommBridge]). */
         const val ACTION_TOGGLE_BRIDGE = "com.spizganed.quickbuds.TOGGLE_BRIDGE"
+        const val ACTION_TILE_SET_ANC = "com.spizganed.quickbuds.TILE_SET_ANC"
+        const val EXTRA_TILE_ANC_MODE = "tile_anc_mode"
         const val ACTION_WIDGET_COMMAND = "com.spizganed.quickbuds.WIDGET_COMMAND"
         const val EXTRA_WIDGET_ACTION = "widget_action"
         const val EXTRA_WIDGET_ANC_MODE = "widget_anc_mode"
