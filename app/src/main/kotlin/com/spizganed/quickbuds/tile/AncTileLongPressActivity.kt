@@ -29,7 +29,6 @@ class AncTileLongPressActivity : Activity() {
     private lateinit var palette: Palette
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        ThemeRes.select(this)
         super.onCreate(savedInstanceState)
         palette = ThemeRes.palette(this)
         configureWindow()
@@ -38,14 +37,14 @@ class AncTileLongPressActivity : Activity() {
 
     private fun configureWindow() {
         window.setBackgroundDrawableResource(android.R.color.transparent)
-        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.decorView.setBackgroundColor(Color.TRANSPARENT)
         window.attributes = window.attributes.apply {
             width = dp(340)
             height = WindowManager.LayoutParams.WRAP_CONTENT
             gravity = Gravity.CENTER
-            dimAmount = 0.42f
-            flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
+            dimAmount = 0f
+            flags = flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv()
         }
     }
 
