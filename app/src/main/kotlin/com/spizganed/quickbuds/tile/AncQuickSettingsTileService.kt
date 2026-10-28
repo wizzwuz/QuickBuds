@@ -59,21 +59,37 @@ class AncQuickSettingsTileService : TileService() {
 
     private fun updateTileForMode(mode: String) {
         val tile = qsTile ?: return
-        tile.label = "Noise control"
-        tile.icon = Icon.createWithResource(this, R.drawable.ic_anc)
-        tile.state = if (mode == AncModes.OFF) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = when {
-                mode == AncModes.OFF -> "Normal"
-                mode == AncModes.TRANSPARENCY -> "Transparency"
-                else -> "ANC"
+        val label: String
+        val iconRes: Int
+        val description: String
+        val state: Int
+        when {
+            mode == AncModes.OFF -> {
+                label = "Normal"
+                iconRes = R.drawable.ic_noise_off
+                description = "Normal mode. Tap to switch to Transparency."
+                state = Tile.STATE_INACTIVE
+            }
+            mode == AncModes.TRANSPARENCY -> {
+                label = "Transparency"
+                iconRes = R.drawable.ic_transparency
+                description = "Transparency mode. Tap to switch to Noise Cancellation."
+                state = Tile.STATE_ACTIVE
+            }
+            else -> {
+                label = "Noise Cancellation"
+                iconRes = R.drawable.ic_anc
+                description = "Noise Cancellation mode. Tap to switch to Normal."
+                state = Tile.STATE_ACTIVE
             }
         }
-        tile.contentDescription = when {
-            mode == AncModes.OFF -> "Noise control: Normal"
-            mode == AncModes.TRANSPARENCY -> "Noise control: Transparency"
-            else -> "Noise control: ANC"
+        tile.label = label
+        tile.icon = Icon.createWithResource(this, iconRes)
+        tile.state = state
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tile.subtitle = label
         }
+        tile.contentDescription = description
         tile.updateTile()
     }
 
