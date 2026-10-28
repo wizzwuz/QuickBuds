@@ -3,21 +3,16 @@ package com.spizganed.quickbuds.tile
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.graphics.drawable.Icon
 import com.spizganed.quickbuds.R
 import com.spizganed.quickbuds.bluetooth.BudsService
 import com.spizganed.quickbuds.protocol.AncModes
 import com.spizganed.quickbuds.widget.WidgetStateStore
 
-/**
- * Quick Settings tile for toggling the earbuds between ANC and Off.
- *
- * The command is handled by BudsService so it reuses the app's model-aware protocol,
- * RFCOMM connection, and state updates instead of sending guessed Bluetooth packets.
- */
+/** Three-state Quick Settings cycle: ANC -> Normal -> Transparency -> ANC. */
 class AncQuickSettingsTileService : TileService() {
 
     override fun onStartListening() {
@@ -27,57 +22,62 @@ class AncQuickSettingsTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val state = WidgetStateStore.read(this)
-        val ancIsOn = state.ancMode != AncModes.OFF &&
-            state.ancMode != AncModes.TRANSPARENCY
-
-        val target = if (ancIsOn) {
-            AncModes.OFF
-        } else {
-            val modes = AncModes.of(this)
-            when {
-                modes.supports("ANC-Medium") -> "ANC-Medium"
-                modes.levels.isNotEmpty() -> modes.levels.first()
-                else -> "ANC-Medium"
-            }
+        val current = WidgetStateStore.read(this).ancMode
+        val modes = AncModes.of(this)
+        val target = when {
+            isAnc(current) -> AncModes.OFF
+            current == AncModes.OFF -> if (modes.supports(AncModes.TRANSPARENCY)) AncModes.TRANSPARENCY else firstAncMode(modes)
+            current == AncModes.TRANSPARENCY -> firstAncMode(modes)
+            else -> firstAncMode(modes)
         }
+        requestMode(target)
+        updateTileForMode(target)
+    }
 
+    private fun firstAncMode(modes: AncModes): String = when {
+        modes.supports(AncModes.SMART) -> AncModes.SMART
+        modes.supports("ANC-Medium") -> "ANC-Medium"
+        modes.levels.isNotEmpty() -> modes.levels.first()
+        else -> "ANC-Medium"
+    }
+
+    private fun requestMode(mode: String) {
         val serviceIntent = Intent(this, BudsService::class.java).apply {
             action = BudsService.ACTION_TILE_SET_ANC
-            putExtra(BudsService.EXTRA_TILE_ANC_MODE, target)
+            putExtra(BudsService.EXTRA_TILE_ANC_MODE, mode)
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-            // Immediate feedback; BudsService refreshes this tile after the buds report their mode.
-            qsTile?.state = if (target == AncModes.OFF) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
-            qsTile?.label = "ANC"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                qsTile?.subtitle = if (target == AncModes.OFF) "Off" else "On"
-            }
-            qsTile?.updateTile()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+            else startService(serviceIntent)
         } catch (_: Exception) {
-            // Do not crash System UI if Android blocks the service start. The next listening
-            // pass restores the tile from the last mode the earbuds reported.
+            // System UI must not crash if Android blocks a background service start.
             updateTileFromStoredState()
         }
     }
 
-    private fun updateTileFromStoredState() {
+    private fun updateTileFromStoredState() = updateTileForMode(WidgetStateStore.read(this).ancMode)
+
+    private fun updateTileForMode(mode: String) {
         val tile = qsTile ?: return
-        val mode = WidgetStateStore.read(this).ancMode
-        val active = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
-        tile.label = "ANC"
+        tile.label = "Noise control"
         tile.icon = Icon.createWithResource(this, R.drawable.ic_anc)
-        tile.state = if (active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        tile.state = if (mode == AncModes.OFF) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = if (active) "On" else "Off"
+            tile.subtitle = when {
+                mode == AncModes.OFF -> "Normal"
+                mode == AncModes.TRANSPARENCY -> "Transparency"
+                else -> "ANC"
+            }
+        }
+        tile.contentDescription = when {
+            mode == AncModes.OFF -> "Noise control: Normal"
+            mode == AncModes.TRANSPARENCY -> "Noise control: Transparency"
+            else -> "Noise control: ANC"
         }
         tile.updateTile()
     }
+
+    private fun isAnc(mode: String): Boolean = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
 
     companion object {
         /** Ask System UI to reread the last device-reported mode after an ANC state change. */
