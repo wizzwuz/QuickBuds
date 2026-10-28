@@ -1,15 +1,10 @@
-# Experimental three-mode Quick Settings tile
+# Experimental ANC Quick Settings tile
 
-Branch name intended for this change: `experimental/anc-three-mode-tile`
+Long-pressing the Quick Settings tile opens the compact themed control panel in every mode; it does not launch `MainActivity`.
 
-## Changes
+- Noise Cancellation mode: Smart, High, Low, and Medium choices, followed by LHDC and Spatial Sound switches.
+- Transparency mode: only LHDC and Spatial Sound switches.
+- Normal mode: only LHDC and Spatial Sound switches.
+- Enabling LHDC disables Spatial Sound; enabling Spatial Sound disables LHDC. The feature writes use the existing `BudsService`/`BudsConnectionManager` protocol path.
 
-- A single tap cycles through ANC -> Normal -> Transparency -> ANC.
-- The tile label, subtitle, accessibility description, and icon reflect the active mode: Noise Cancellation (`ic_anc`), Normal (`ic_noise_off`), or Transparency (`ic_transparency`).
-- A long press routes through Android's `ACTION_QS_TILE_PREFERENCES` handler. While ANC is active it shows a compact, app-themed picker for Smart / High / Low / Medium. Modes unsupported by the connected model are disabled rather than sending an unverified command.
-- While Normal or Transparency is active, a long press opens the QuickBuds main screen instead of App Info.
-- The APK workflow is configured to run on `experimental/**` branches as well as `main`.
-
-## Important validation note
-
-The Android manifest was XML-validated. A local Gradle build could not run in this environment because the Gradle 9.6.0 distribution could not be downloaded (`UnknownHostException: services.gradle.org`). This source is **not yet build-verified**; use the GitHub Actions workflow on the experimental branch to get the authoritative compile result and APK artifact.
+This experimental change has not been verified on a physical earbud/device. Build and test it with the repository's GitHub Actions workflow before relying on it.

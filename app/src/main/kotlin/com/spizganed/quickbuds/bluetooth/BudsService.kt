@@ -20,7 +20,9 @@ import android.util.Log
 import android.view.KeyEvent
 import com.spizganed.quickbuds.R
 import com.spizganed.quickbuds.protocol.AncModes
+import com.spizganed.quickbuds.protocol.RowRules
 import com.spizganed.quickbuds.protocol.Capabilities
+import com.spizganed.quickbuds.protocol.Feature
 import com.spizganed.quickbuds.protocol.FeatureSync
 import com.spizganed.quickbuds.protocol.FeatureSyncConfig
 import com.spizganed.quickbuds.protocol.OpoProtocol
@@ -41,6 +43,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
 
     /** ANC mode requested from the Quick Settings tile while the RFCOMM link is being opened. */
     private var pendingTileAncMode: String? = null
+    private val pendingTileFeatures = mutableListOf<Pair<Int, Boolean>>()
 
     /** The delayed ACL connect (KeepAliveReceiver), so a deliberate disconnect cancels it. */
     private var aclConnect: Runnable? = null
@@ -169,6 +172,19 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 } else {
                     statusLog("[TILE] Not connected; queue ANC $mode and connect")
                     pendingTileAncMode = mode
+                    forceConnect(withAudio = false, user = true)
+                }
+            }
+            ACTION_TILE_SET_FEATURE -> {
+                val feature = intent.getIntExtra(EXTRA_TILE_FEATURE, -1)
+                val enabled = intent.getBooleanExtra(EXTRA_TILE_FEATURE_ON, false)
+                if (feature != Feature.HIRES_CODEC && feature != Feature.SPATIAL_SOUND) {
+                    statusLog("[TILE] Unsupported feature id=$feature")
+                } else if (manager?.isConnected() == true) {
+                    sendTileFeature(feature, enabled)
+                } else {
+                    statusLog("[TILE] Queue feature id=$feature enabled=$enabled and connect")
+                    pendingTileFeatures += feature to enabled
                     forceConnect(withAudio = false, user = true)
                 }
             }
@@ -420,6 +436,11 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 pendingTileAncMode = null
                 sendTileAncMode(mode)
             }
+            if (pendingTileFeatures.isNotEmpty()) {
+                val queued = pendingTileFeatures.toList()
+                pendingTileFeatures.clear()
+                queued.forEach { (feature, enabled) -> sendTileFeature(feature, enabled) }
+            }
         }
         gameEq.update()
     }
@@ -533,6 +554,68 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         AncQuickSettingsTileService.requestRefresh(this)
     }
 
+    /**
+     * Quick Settings floating-panel feature changes. LHDC (the app's Hi-Res feature) and Spatial
+     * Sound are mutually exclusive here. Spatial is written first because that is the order used
+     * by the app/protocol when a codec restart is needed.
+     */
+    private fun sendTileFeature(feature: Int, enabled: Boolean) {
+        val m = manager
+        if (m?.isConnected() != true) {
+            statusLog("[TILE] Feature id=$feature not sent: disconnected")
+            return
+        }
+        val spatialByType = RowRules.spatialByType(ModelCatalog.current(this)?.json, Capabilities.commands(this))
+        val currentStates = m.featureStates
+        val writes: List<Pair<Int, Int>>
+        val key: Int
+        val restarts: Boolean
+
+        if (feature == Feature.SPATIAL_SOUND && spatialByType) {
+            m.setSpatialType(if (enabled) 1 else 0)
+            if (enabled && currentStates[Feature.HIRES_CODEC] == 1) {
+                handler.postDelayed({
+                    m.requestSetting(
+                        Feature.HIRES_CODEC,
+                        listOf(Feature.HIRES_CODEC to 0),
+                        FeatureSync.Confirm.READ,
+                        restarts = true
+                    )
+                }, 300)
+            }
+            return
+        }
+
+        if (feature == Feature.HIRES_CODEC && enabled && spatialByType) {
+            m.setSpatialType(0)
+            handler.postDelayed({
+                m.requestSetting(
+                    Feature.HIRES_CODEC,
+                    listOf(Feature.HIRES_CODEC to 1),
+                    FeatureSync.Confirm.READ,
+                    restarts = true
+                )
+            }, 300)
+            return
+        }
+
+        key = feature
+        writes = when {
+            feature == Feature.HIRES_CODEC && enabled -> listOf(
+                Feature.SPATIAL_SOUND to 0,
+                Feature.HIRES_CODEC to 1
+            )
+            feature == Feature.SPATIAL_SOUND && enabled -> listOf(
+                Feature.SPATIAL_SOUND to 1,
+                Feature.HIRES_CODEC to 0
+            )
+            else -> listOf(feature to if (enabled) 1 else 0)
+        }
+        restarts = writes.any { it.first == Feature.HIRES_CODEC }
+        statusLog("[TILE] Feature id=$feature enabled=$enabled writes=$writes")
+        m.requestSetting(key, writes, FeatureSync.Confirm.READ, restarts = restarts)
+    }
+
     /** Send a Quick Settings tile request through the same model-aware ANC controller as the UI. */
     private fun sendTileAncMode(mode: String) {
         if (manager?.isConnected() != true) {
@@ -574,6 +657,9 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         const val ACTION_TOGGLE_BRIDGE = "com.spizganed.quickbuds.TOGGLE_BRIDGE"
         const val ACTION_TILE_SET_ANC = "com.spizganed.quickbuds.TILE_SET_ANC"
         const val EXTRA_TILE_ANC_MODE = "tile_anc_mode"
+        const val ACTION_TILE_SET_FEATURE = "com.spizganed.quickbuds.TILE_SET_FEATURE"
+        const val EXTRA_TILE_FEATURE = "tile_feature"
+        const val EXTRA_TILE_FEATURE_ON = "tile_feature_on"
         const val ACTION_WIDGET_COMMAND = "com.spizganed.quickbuds.WIDGET_COMMAND"
         const val EXTRA_WIDGET_ACTION = "widget_action"
         const val EXTRA_WIDGET_ANC_MODE = "widget_anc_mode"

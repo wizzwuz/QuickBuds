@@ -3,51 +3,57 @@ package com.spizganed.quickbuds.tile
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
-import com.spizganed.quickbuds.R
 import com.spizganed.quickbuds.bluetooth.BudsService
 import com.spizganed.quickbuds.protocol.AncModes
-import com.spizganed.quickbuds.ui.MainActivity
+import com.spizganed.quickbuds.protocol.Capabilities
+import com.spizganed.quickbuds.protocol.Feature
+import com.spizganed.quickbuds.ui.Palette
 import com.spizganed.quickbuds.ui.ThemeRes
 import com.spizganed.quickbuds.widget.WidgetStateStore
 
 /**
- * Android routes a long-press on a QS tile through ACTION_QS_TILE_PREFERENCES.
- * ANC opens a compact themed mode picker; Normal/Transparency open the main app.
+ * Android routes a long-press on a Quick Settings tile through ACTION_QS_TILE_PREFERENCES.
+ * Always show this compact themed control panel; never launch MainActivity from the background.
  */
 class AncTileLongPressActivity : Activity() {
+    private lateinit var root: LinearLayout
+    private lateinit var palette: Palette
+
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeRes.select(this)
         super.onCreate(savedInstanceState)
+        palette = ThemeRes.palette(this)
+        configureWindow()
+        buildPanel()
+    }
 
-        val mode = WidgetStateStore.read(this).ancMode
-        val isAnc = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
-        if (!isAnc) {
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
-            finish()
-            return
-        }
-
+    private fun configureWindow() {
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.decorView.setBackgroundColor(Color.TRANSPARENT)
         window.attributes = window.attributes.apply {
-            width = dp(320)
+            width = dp(340)
             height = WindowManager.LayoutParams.WRAP_CONTENT
             gravity = Gravity.CENTER
             dimAmount = 0.42f
             flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
         }
+    }
 
-        val palette = ThemeRes.palette(this)
-        val root = LinearLayout(this).apply {
+    private fun buildPanel() {
+        val mode = WidgetStateStore.read(this).ancMode
+        val isAnc = mode != AncModes.OFF && mode != AncModes.TRANSPARENCY
+        val isTransparency = mode == AncModes.TRANSPARENCY
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(16))
             background = GradientDrawable().apply {
@@ -56,20 +62,47 @@ class AncTileLongPressActivity : Activity() {
                 setStroke(dp(1), palette.outline)
             }
         }
+
         root.addView(TextView(this).apply {
-            text = "ANC mode"
+            text = when {
+                isAnc -> "Noise Cancellation"
+                isTransparency -> "Transparency"
+                else -> "Normal"
+            }
             textSize = 19f
             setTextColor(palette.text)
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.CENTER_VERTICAL
-        }, LinearLayout.LayoutParams(-1, dp(34)))
-        root.addView(TextView(this).apply {
-            text = "Choose noise cancellation strength"
-            textSize = 13f
-            setTextColor(palette.textSecondary)
-            setPadding(0, dp(2), 0, dp(10))
-        })
+        }, LinearLayout.LayoutParams(-1, dp(32)))
 
+        if (isAnc) {
+            root.addView(TextView(this).apply {
+                text = "Choose noise cancellation strength"
+                textSize = 13f
+                setTextColor(palette.textSecondary)
+                setPadding(0, dp(2), 0, dp(8))
+            })
+            addAncChoices(mode)
+        }
+
+        // LHDC and Spatial Sound are available in every mode. In Transparency and Normal
+        // these are the only controls shown; ANC also shows its four strength choices above.
+        if (isAnc) {
+            root.addView(TextView(this).apply {
+                text = "Audio features"
+                textSize = 14f
+                setTextColor(palette.textSecondary)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setPadding(0, dp(12), 0, dp(4))
+            })
+        }
+        addFeatureSwitch("LHDC", Feature.HIRES_CODEC)
+        addFeatureSwitch("Spatial Sound", Feature.SPATIAL_SOUND)
+
+        setContentView(root)
+    }
+
+    private fun addAncChoices(currentMode: String) {
         val modes = AncModes.of(this)
         val choices = listOf(
             "Smart" to AncModes.SMART,
@@ -79,7 +112,7 @@ class AncTileLongPressActivity : Activity() {
         )
         choices.forEach { (label, value) ->
             val supported = modes.supports(value)
-            val selected = mode == value
+            val selected = currentMode == value
             val row = TextView(this).apply {
                 text = label + if (selected) "  ✓" else ""
                 textSize = 16f
@@ -99,21 +132,65 @@ class AncTileLongPressActivity : Activity() {
                         action = BudsService.ACTION_TILE_SET_ANC
                         putExtra(BudsService.EXTRA_TILE_ANC_MODE, value)
                     }
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
-                        else startService(serviceIntent)
-                    } catch (_: Exception) {
-                        // The picker closes cleanly; the tile refreshes from the device state next time.
-                    }
+                    startBudsService(serviceIntent)
                     finish()
                 }
             }
-            val lp = LinearLayout.LayoutParams(-1, dp(48))
+            val lp = LinearLayout.LayoutParams(-1, dp(46))
             lp.topMargin = dp(4)
             root.addView(row, lp)
         }
-        root.setOnClickListener { /* Keep taps on card padding from dismissing the picker. */ }
-        setContentView(root)
+    }
+
+    private fun addFeatureSwitch(label: String, feature: Int) {
+        val savedStates = Capabilities.reply(this)
+        val supported = savedStates == null || savedStates.containsKey(feature)
+        val enabled = (savedStates?.get(feature) ?: 0) == 1
+        val toggle = Switch(this).apply {
+            text = label
+            textSize = 15f
+            setTextColor(palette.text)
+            isChecked = enabled
+            isEnabled = supported
+            alpha = if (supported) 1f else 0.45f
+            tag = feature
+        }
+        attachFeatureListener(toggle, feature)
+        val row = LinearLayout.LayoutParams(-1, dp(52))
+        row.topMargin = dp(2)
+        root.addView(toggle, row)
+    }
+
+    private fun attachFeatureListener(toggle: Switch, feature: Int) {
+        toggle.setOnCheckedChangeListener { _, requestedOn ->
+            // Enforce mutual exclusion visually without firing a second, conflicting command.
+            if (requestedOn) {
+                val other = if (feature == Feature.HIRES_CODEC) Feature.SPATIAL_SOUND else Feature.HIRES_CODEC
+                for (i in 0 until root.childCount) {
+                    val child = root.getChildAt(i)
+                    if (child is Switch && child.tag == other) {
+                        child.setOnCheckedChangeListener(null)
+                        child.isChecked = false
+                        attachFeatureListener(child, other)
+                    }
+                }
+            }
+            val intent = Intent(this@AncTileLongPressActivity, BudsService::class.java).apply {
+                action = BudsService.ACTION_TILE_SET_FEATURE
+                putExtra(BudsService.EXTRA_TILE_FEATURE, feature)
+                putExtra(BudsService.EXTRA_TILE_FEATURE_ON, requestedOn)
+            }
+            startBudsService(intent)
+        }
+    }
+
+    private fun startBudsService(intent: Intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+        } catch (_: Exception) {
+            // Keep the floating panel responsive even if Android temporarily blocks the service.
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
