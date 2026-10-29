@@ -39,6 +39,7 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
 
     /** A device-manager function of this model (`[VENDOR]` `multiConnectFunctions`), on buds that take `0x0429`. */
     private fun has(fn: String): Boolean {
+        if (ModelCatalog.isRealmeBudsT500Pro(this)) return true
         val list = ModelCatalog.current(this)?.json?.optJSONArray("dualDevice") ?: return false
         if ((0 until list.length()).none { list.getString(it) == fn }) return false
         return Capabilities.supports(this, OpoProtocol.CMD_MULTI_CONNECT) || ModelCatalog.manual(this) != null
@@ -168,14 +169,24 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
     /** Disconnect a connected device after user confirmation in the "Disconnect or Not" dialog. */
     private fun confirmDisconnect(d: BudsConnectionManager.PairedDevice) {
         val sheet = BottomSheetDialog(this)
-        val self = d.thisPhone || d.name == ownName()
+        val own = ownName()
+        val self = d.thisPhone || (own != null && d.name.equals(own, ignoreCase = true))
         sheet.title(getString(R.string.disconnect_dialog_title))
             .message(getString(R.string.dual_disconnect_q, d.name))
             .cancel(getString(R.string.action_cancel)) { sheet.close() }
             .confirm(getString(R.string.action_ok)) {
                 sheet.close()
+                manager?.markDisconnected(d.mac)
                 manager?.connectDevice(d.mac, false)
                 if (self) {
+                    try {
+                        startService(
+                            Intent(this, BudsService::class.java).setAction(
+                                BudsService.ACTION_FORCE_DISCONNECT
+                            ).putExtra(BudsService.EXTRA_WITH_AUDIO, true)
+                                .putExtra(BudsService.EXTRA_USER_CONNECT, true)
+                        )
+                    } catch (_: Exception) {}
                     window.decorView.postDelayed({
                         manager?.disconnect()
                     }, 250)

@@ -83,6 +83,20 @@ class QuickBudsApp : Application() {
             prefs.edit().remove(PREF_CRASH_ON_LAUNCH).commit()
             throw RuntimeException("Crash test from Dev Tools (crash logger check)")
         }
+        // Exempt hidden APIs so Bluetooth profile and device disconnect calls succeed on Android 11-15.
+        try {
+            val forName = Class::class.java.getDeclaredMethod("forName", String::class.java)
+            val getDeclaredMethod = Class::class.java.getDeclaredMethod(
+                "getDeclaredMethod", String::class.java, Array<Class<*>>::class.java
+            )
+            val vmRuntimeClass = forName.invoke(null, "dalvik.system.VMRuntime") as Class<*>
+            val getRuntime = getDeclaredMethod.invoke(vmRuntimeClass, "getRuntime", null) as java.lang.reflect.Method
+            val setHiddenApiExemptions = getDeclaredMethod.invoke(
+                vmRuntimeClass, "setHiddenApiExemptions", arrayOf(Array<String>::class.java)
+            ) as java.lang.reflect.Method
+            val vmRuntime = getRuntime.invoke(null)
+            setHiddenApiExemptions.invoke(vmRuntime, arrayOf("L"))
+        } catch (_: Throwable) {}
     }
 
     /** Match system: open screens recreate themselves (no uiMode in configChanges); widgets need a push. */
