@@ -44,6 +44,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
     /** ANC mode requested from the Quick Settings tile while the RFCOMM link is being opened. */
     private var pendingTileAncMode: String? = null
     private val pendingTileFeatures = mutableListOf<Pair<Int, Boolean>>()
+    private var pendingTileGameMode: Boolean? = null
 
     /** The delayed ACL connect (KeepAliveReceiver), so a deliberate disconnect cancels it. */
     private var aclConnect: Runnable? = null
@@ -185,6 +186,16 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 } else {
                     statusLog("[TILE] Queue feature id=$feature enabled=$enabled and connect")
                     pendingTileFeatures += feature to enabled
+                    forceConnect(withAudio = false, user = true)
+                }
+            }
+            ACTION_TILE_SET_GAME_MODE -> {
+                val enabled = intent.getBooleanExtra(EXTRA_TILE_GAME_MODE_ON, false)
+                if (manager?.isConnected() == true) {
+                    sendTileGameMode(enabled)
+                } else {
+                    statusLog("[TILE] Queue low latency=$enabled and connect")
+                    pendingTileGameMode = enabled
                     forceConnect(withAudio = false, user = true)
                 }
             }
@@ -441,6 +452,10 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 pendingTileFeatures.clear()
                 queued.forEach { (feature, enabled) -> sendTileFeature(feature, enabled) }
             }
+            pendingTileGameMode?.let { enabled ->
+                pendingTileGameMode = null
+                sendTileGameMode(enabled)
+            }
         }
         gameEq.update()
     }
@@ -554,6 +569,22 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         AncQuickSettingsTileService.requestRefresh(this)
     }
 
+    /** Send the floating panel's low-latency toggle through the same model-aware path as MainActivity. */
+    private fun sendTileGameMode(enabled: Boolean) {
+        val m = manager
+        if (m?.isConnected() != true) {
+            statusLog("[TILE] Low latency=$enabled not sent: disconnected")
+            return
+        }
+        val gameId = Capabilities.gameModeId(this)
+        statusLog("[TILE] Low latency=$enabled (feature id=$gameId)")
+        m.requestSetting(
+            gameId,
+            listOf(gameId to if (enabled) 1 else 0),
+            FeatureSyncConfig.gameConfirm(ModelCatalog.current(this)?.json)
+        )
+    }
+
     /**
      * Quick Settings floating-panel feature changes. LHDC (the app's Hi-Res feature) and Spatial
      * Sound are mutually exclusive here. Spatial is written first because that is the order used
@@ -660,6 +691,8 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         const val ACTION_TILE_SET_FEATURE = "com.spizganed.quickbuds.TILE_SET_FEATURE"
         const val EXTRA_TILE_FEATURE = "tile_feature"
         const val EXTRA_TILE_FEATURE_ON = "tile_feature_on"
+        const val ACTION_TILE_SET_GAME_MODE = "com.spizganed.quickbuds.TILE_SET_GAME_MODE"
+        const val EXTRA_TILE_GAME_MODE_ON = "tile_game_mode_on"
         const val ACTION_WIDGET_COMMAND = "com.spizganed.quickbuds.WIDGET_COMMAND"
         const val EXTRA_WIDGET_ACTION = "widget_action"
         const val EXTRA_WIDGET_ANC_MODE = "widget_anc_mode"
