@@ -309,13 +309,14 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
                 v.setOnClickPendingIntent(GCON.root, null)
             }
 
-            // The page behind the chip is blank (the panel's own colour); it fades in with the sweep. Set both ways.
-            v.setFloat(R.id.w_content, "setAlpha", k)
+            // Behind the chip: the empty rings, softened and faint (issue 23). While a connect waits for levels the page is blank.
+            // It fades in with the sweep. Set both ways.
+            v.setFloat(R.id.w_content, "setAlpha", if (ghost) GHOST_ALPHA else k)
 
             // Both pages and the list are filled every time, so the one sliding or fading out still
             // shows current values (a pick's highlight while the list closes).
             if (live) grid(context, v, p, state, fit, id)
-            battery(context, v, p, shown, fit, id, k)
+            battery(context, v, p, shown, fit, id, k, ghost)
             if (live && !list) controls(context, v, p, state, fit, id, swap)
             return v to child
         }
@@ -595,7 +596,8 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
             return bmp
         }
 
-        private fun battery(context: Context, v: RemoteViews, p: Palette, state: WidgetStateStore.State, fit: Fit, id: Int, k: Float) {
+        /** [ghost]: disconnected. The empty rings are softened and the texts hide, so the Connect chip reads on top. */
+        private fun battery(context: Context, v: RemoteViews, p: Palette, state: WidgetStateStore.State, fit: Fit, id: Int, k: Float, ghost: Boolean = false) {
             val paged = fit.shape.paged
             val ringDp = if (paged) ringDp(context, fit.shape, id) else fit.ring
             // k < 1: rings drawn to k of their level and the glyphs part-way to their ghost colour.
@@ -611,13 +613,14 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
                 val (bgId, ringId, pct, label, strokeId) = PANELS[slot].toList()
                 panelBg(context, v, bgId, p)
                 panelOutline(context, v, strokeId, p)
-                v.setImageViewBitmap(ringId, ring(context, p, levels[slot], slot, statuses[slot], ringDp, k))
+                v.setImageViewBitmap(ringId, ring(context, p, levels[slot], slot, statuses[slot], ringDp, k).let { if (ghost && GHOST_BLUR) soften(context, it) else it })
                 pctText(context, v, pct, p, levels[slot], if (paged) null else fit.font)
+                v.setViewVisibility(pct, if (ghost) View.INVISIBLE else View.VISIBLE)
                 val inEar = statuses[slot] == 3 || statuses[slot] == 7
                 val text = if (slot == 1) context.getString(names[slot]) else wearLabel(context, statuses[slot]) ?: context.getString(names[slot])
                 // Nothing, Material and the sized shapes: no wear text, the glyph's shade says it ([nothingTint]) and the ring's content description reads it.
                 val noLabel = WidgetSettings.nothingStyle(context) || WidgetSettings.materialStyle(context) || !paged
-                v.setViewVisibility(label, if (noLabel) View.GONE else View.VISIBLE)
+                v.setViewVisibility(label, if (noLabel) View.GONE else if (ghost) View.INVISIBLE else View.VISIBLE)
                 v.setContentDescription(ringId, if (slot == 1) text else context.getString(names[slot]) + ", " + text)
                 if (!noLabel) setText(context, v, label, if (inEar) semibold(text) else text, if (inEar) p.text else p.textSecondary)
             }
@@ -627,7 +630,17 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
                 // The case icon takes all the height the rings leave ([caseRowDp]); TALL's case row is 32dp. Nothing: at the
                 // rings' dot pitch, so the big icon keeps the app's case details (lid cut, LED).
                 val caseDp = if (paged) caseRowDp(context, id) else 32f - 2 * geo(context).row
-                if (p.glass) {
+                if (ghost && GHOST_BLUR) {
+                    // Disconnected: the case glyph is blurred like the rings, in every style.
+                    val hpx = ThemeRes.dp(context, caseDp).coerceAtLeast(1)
+                    val wpx = Math.round(hpx * 496f / 400f)
+                    val gb = Bitmap.createBitmap(wpx, hpx, Bitmap.Config.ARGB_8888)
+                    context.getDrawable(R.drawable.ic_case)!!.mutate().apply {
+                        setTint(glyphTint(context, p, 1, -1, k)); setBounds(0, 0, wpx, hpx); draw(Canvas(gb))
+                    }
+                    v.setImageViewBitmap(R.id.w_case_icon, soften(context, gb))
+                    v.setInt(R.id.w_case_icon, "setColorFilter", 0)
+                } else if (p.glass) {
                     val hpx = ThemeRes.dp(context, caseDp).coerceAtLeast(1)
                     val wpx = Math.round(hpx * 496f / 400f)
                     val gb = Bitmap.createBitmap(wpx + 12, hpx + 12, Bitmap.Config.ARGB_8888)
@@ -639,9 +652,9 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
                     icon(context, v, R.id.w_case_icon, R.drawable.ic_case, caseDp, if (paged) ringCellDp(context, id) else fit.ring / RING_CELLS)
                 }
                 // A colour filter keeps its alpha as a lightening of the glyph, so the fading ghost colour is laid on the panel first.
-                if (!p.glass) v.setInt(R.id.w_case_icon, "setColorFilter",
+                if (!p.glass && !(ghost && GHOST_BLUR)) v.setInt(R.id.w_case_icon, "setColorFilter",
                     androidx.core.graphics.ColorUtils.compositeColors(glyphTint(context, p, 1, -1, k), p.card))
-                v.setImageViewBitmap(R.id.w_case_bar, bar(context, p, levels[1], id, caseDp))
+                v.setImageViewBitmap(R.id.w_case_bar, bar(context, p, levels[1], id, caseDp).let { if (ghost && GHOST_BLUR) soften(context, it) else it })
                 // The level is drawn into the bar ([bar]); the bar reads it out.
                 v.setViewVisibility(R.id.w_pct_case, View.GONE)
                 v.setContentDescription(R.id.w_case_bar, context.getString(R.string.status_case) + ", " + pctLabel(context, levels[1]))
@@ -841,6 +854,75 @@ open class QuickBudsWidget(private val kind: Kind) : AppWidgetProvider() {
             val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
             drawRing(context, Canvas(bmp), px.toFloat(), p, level, slot, tint)
             return bmp
+        }
+
+        /** How visible the empty battery page is behind the Connect chip. */
+        private const val GHOST_ALPHA = 0.42f
+
+        /** Blur the empty page behind the Connect chip. Off: the 2026-10-28 blur never looked good enough on the phone, so the rings stay crisp and faint. */
+        private const val GHOST_BLUR = false
+
+        /**
+         * A blurred copy of [src]: three box passes on the premultiplied channels, which closely match a Gaussian. The radius
+         * is the same 2.5dp for every part (rings, bar, case), so they look alike. [src] is drawn a little smaller first, so
+         * the blur has room (3 x the radius) and is not cut flat at the bitmap's edge. (A scale-down and scale-up blurs into visible blocks.)
+         */
+        private fun soften(context: Context, src: Bitmap): Bitmap {
+            val r = ThemeRes.dp(context, 2.5f).coerceAtLeast(3)
+            val w = src.width
+            val h = src.height
+            val framed = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            // Three box passes reach about 3r from the edge of the drawing, so that is the room (at most a quarter of the size).
+            val ix = (3f * r).coerceAtMost(w / 4f)
+            val iy = (3f * r).coerceAtMost(h / 4f)
+            Canvas(framed).drawBitmap(src, null, RectF(ix, iy, w - ix, h - iy), Paint(Paint.FILTER_BITMAP_FLAG))
+            val px = IntArray(w * h)
+            framed.getPixels(px, 0, w, 0, 0, w, h)
+            val ch = Array(4) { IntArray(w * h) }
+            for (i in px.indices) {
+                val c = px[i]
+                val a = c ushr 24
+                ch[0][i] = a
+                ch[1][i] = (c shr 16 and 0xFF) * a / 255
+                ch[2][i] = (c shr 8 and 0xFF) * a / 255
+                ch[3][i] = (c and 0xFF) * a / 255
+            }
+            val tmp = IntArray(w * h)
+            for (c in ch) repeat(3) {
+                boxPass(c, tmp, w, h, r, true)
+                boxPass(tmp, c, w, h, r, false)
+            }
+            for (i in px.indices) {
+                val a = ch[0][i]
+                if (a == 0) { px[i] = 0; continue }
+                val rr = (ch[1][i] * 255 / a).coerceAtMost(255)
+                val gg = (ch[2][i] * 255 / a).coerceAtMost(255)
+                val bb = (ch[3][i] * 255 / a).coerceAtMost(255)
+                px[i] = (a shl 24) or (rr shl 16) or (gg shl 8) or bb
+            }
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            out.setPixels(px, 0, w, 0, 0, w, h)
+            return out
+        }
+
+        /** One box blur pass of radius [r] along a row ([horizontal]) or a column; the edges count as empty. */
+        private fun boxPass(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
+            val n = if (horizontal) w else h
+            val lines = if (horizontal) h else w
+            val step = if (horizontal) 1 else w
+            val div = 2 * r + 1
+            for (line in 0 until lines) {
+                val base = if (horizontal) line * w else line
+                var sum = 0
+                for (k in 0..minOf(r, n - 1)) sum += src[base + k * step]
+                for (i in 0 until n) {
+                    dst[base + i * step] = sum / div
+                    val add = i + r + 1
+                    val drop = i - r
+                    if (add < n) sum += src[base + add * step]
+                    if (drop >= 0) sum -= src[base + drop * step]
+                }
+            }
         }
 
         /** A bud's or the case's glyph colour by wear, [k] of the way from the disconnected (ghost) colour. */

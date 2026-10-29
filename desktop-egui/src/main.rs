@@ -36,9 +36,11 @@ mod glass;
 mod hearing;
 mod models;
 mod motion;
+mod notice;
 mod overview;
 mod settings;
 mod palette;
+mod panel;
 mod phone;
 mod preset_edit;
 mod report;
@@ -47,6 +49,7 @@ mod sheets;
 mod test;
 mod token_sheet;
 mod tokens;
+mod tray;
 mod update;
 mod update_core;
 
@@ -239,8 +242,20 @@ pub struct App {
     pub feedback: feedback::State,
     pub update: update::State,
     pub sheets: sheets::State,
+    /// The tray icon and the events it sends.
+    pub tray: tray::Tray,
+    /// The quick panel of the tray (Windows).
+    pub panel: panel::Panel,
+    /// Quit was asked: the close that follows must not hide the window.
+    quitting: bool,
+    /// The short hints for a refused write and for an ANC write with no bud in an ear.
+    pub toast: notice::State,
     /// The disconnect pill asked; Cancel keeps the link.
     pub disconnect_ask: bool,
+    /// The codec picker of a `hiRes` model is open.
+    pub codec_pick: bool,
+    /// The 3D audio type picker of a head tracking model is open.
+    pub spatial_pick: bool,
 }
 
 /// A write that waits for the user's accept: the buds reconnect, or it makes a sound in the ears.
@@ -263,11 +278,14 @@ impl App {
             session::spawn(move |s| { *inbox.lock().unwrap() = Some(s); ctx.request_repaint(); })
         };
         let glow = load_settings()["glass_gradient"].as_bool().unwrap_or(true);
+        let tr = translations(chosen_locale());
+        let tray = tray::Tray::new(&cc.egui_ctx, &tr);
         let mut app = Self {
-            snap: Snapshot::default(), tx, tr: translations(chosen_locale()), inbox, page: Page::Overview, has: Has::ALL,
+            snap: Snapshot::default(), tx, tr, inbox, page: Page::Overview, has: Has::ALL,
             modes: AncModes::default(), last_level: None, levels_open: false, glow, demo, confirm: None, scroll: 0.0, shown_page: Page::Overview, page_seq: 0, page_since: std::time::Instant::now(), eq: Default::default(), dual: Default::default(), earbuds: Default::default(), dev: Default::default(), gestures: Default::default(), settings: Default::default(), appearance: Default::default(), hearing: Default::default(), setup: Default::default(), layout: Default::default(), preset: Default::default(),
-            test: Default::default(), feedback: Default::default(), update: Default::default(), sheets: Default::default(),
-            disconnect_ask: false, style: glass::style::Style::Glass, style_for: false,
+            test: Default::default(), feedback: Default::default(), update: Default::default(), sheets: Default::default(), tray, toast: Default::default(),
+            panel: Default::default(),
+            quitting: false, disconnect_ask: false, codec_pick: false, spatial_pick: false, style: glass::style::Style::Glass, style_for: false,
         };
         app.reload_style(&cc.egui_ctx);
         // First start: the guide runs before Home, as on the phone.
@@ -283,6 +301,11 @@ impl App {
         if let Ok(n) = std::env::var("QB_SETUP") { if let Ok(i) = n.parse::<usize>() { app.setup.page = i.min(9); } }
         if let Ok(key) = std::env::var("QB_SHEET") {
             sheets::debug_open(&mut app, &key);
+        }
+        // The quick panel at start, for a screenshot on the invisible screen.
+        if std::env::var_os("QB_PANEL").is_some() {
+            app.panel.pos = (640.0, 260.0);
+            app.panel.open = true;
         }
         app
     }
@@ -306,6 +329,7 @@ impl App {
             if Has::of(&s) != self.has { self.has = Has::of(&s); }
         }
         if let Some(a) = s.anc.as_deref().filter(|a| types::LEVELS.contains(a)) { self.last_level = Some(a.into()); }
+        self.toast.update(&s, std::time::Instant::now());
         self.snap = s;
     }
 
@@ -316,9 +340,57 @@ impl eframe::App for App {
     /// The window is transparent outside its rounded pane.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] { [0.0, 0.0, 0.0, 0.0] }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    /// Runs before each frame and also while the window is hidden: the link and the tray stay live there.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let new = self.inbox.lock().unwrap().take();
         if let Some(s) = new { self.apply(s); }
+        self.tray.update(&self.snap, &self.modes, &self.tr);
+        while let Some(e) = self.tray.next_event() {
+            match e {
+                tray::TrayEvent::Open => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                tray::TrayEvent::Quit => {
+                    // The close still comes through `close_requested`: it must not hide the window again.
+                    self.quitting = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                tray::TrayEvent::Cmd(c) => self.send(c),
+                tray::TrayEvent::Panel(x, y) => {
+                    let ppp = ctx.pixels_per_point();
+                    let screen = ctx.input(|i| i.viewport().monitor_size).map(|m| (m.x * ppp, m.y * ppp));
+                    self.panel.click(panel::place((x as f32, y as f32), screen, ppp), std::time::Instant::now());
+                    // The window is often hidden in the tray: a painted pass makes the panel's own window.
+                    if self.panel.open { ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden); }
+                }
+            }
+        }
+        // The quick panel follows the snapshot while it is open. It has its own screen, so it draws the
+        // flat glass; the app closes it when the panel asks.
+        if self.panel.open {
+            let view = panel::view(&self.snap, &self.modes, &self.tr);
+            panel::open(ctx, view, self.panel.pos, self.panel.tx.clone(), self.panel.focused.clone());
+        }
+        while let Some(a) = self.panel.rx.try_recv().ok() {
+            match a {
+                panel::Action::Open => {
+                    self.panel.open = false;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                panel::Action::Close { focus } => self.panel.closed(focus, std::time::Instant::now()),
+                panel::Action::Cmd(c) => self.send(c),
+            }
+        }
+        // Closing the window hides it; the app lives in the tray until Quit.
+        if !self.quitting && tray::up() && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if palette::is_light_system(ui.ctx()) != self.style_for && palette::auto() { let ctx = ui.ctx().clone(); self.reload_style(&ctx); }
         glass::set_glow(ui.ctx(), if self.glow { 1.0 } else { 0.0 });
         glass::backdrop(ui);

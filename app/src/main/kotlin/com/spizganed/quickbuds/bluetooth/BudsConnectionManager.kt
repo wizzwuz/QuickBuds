@@ -205,6 +205,18 @@ class BudsConnectionManager(private val context: Context) {
     /** Wire sequence byte -> the engine's own number, for the writes and reads the engine sent. */
     private val wireToEngine = java.util.concurrent.ConcurrentHashMap<Int, Int>()
 
+    /**
+     * The engine number for a reply with wire seq [seq]. A model with `"seqless":1` (realme Buds T100, report #100)
+     * answers with its own counter, so the newest outstanding engine request is the one that the reply answers.
+     */
+    private fun takeEngineSeq(seq: Int): Int? {
+        wireToEngine.remove(seq)?.let { return it }
+        if (ModelCatalog.current(context)?.json?.optInt("seqless") != 1) return null
+        val wire = wireToEngine.entries.maxByOrNull { it.value }?.key ?: return null
+        log("SYNC: reply seq=0x%02X pairs with request seq=0x%02X (seqless model)".format(seq, wire))
+        return wireToEngine.remove(wire)
+    }
+
     /** The only timer of the feature sync: asks the engine to give up on a silent buds. */
     private val tickRunnable = Runnable { execute(sync.tick(SystemClock.elapsedRealtime())) }
 
@@ -373,6 +385,7 @@ class BudsConnectionManager(private val context: Context) {
                 // Every socket try counts: the 4 UUID tries and channel 15, 5 in total, then the app stops.
                 val totalTries = tries.size + 1
                 var failedTries = 0
+                val failures = mutableListOf<Pair<String?, Long>>()
                 fun tryFailed() {
                     failedTries++
                     if (generation == connectGeneration && ConnectPolicy.showTryToast(user))
@@ -396,6 +409,7 @@ class BudsConnectionManager(private val context: Context) {
                         break
                     } catch (e: Exception) {
                         lastError = e.message ?: e.javaClass.simpleName
+                        failures += lastError to (SystemClock.elapsedRealtime() - tryStart)
                         log("Failed UUID $uuidStr ($kind): $lastError (${SystemClock.elapsedRealtime() - tryStart} ms)")
                         log("Connect error: ${e.javaClass.simpleName}: ${e.message}")
                         logSocketError(e)
@@ -418,6 +432,7 @@ class BudsConnectionManager(private val context: Context) {
                         log("Connected via raw channel 15 (${SystemClock.elapsedRealtime() - tryStart} ms)")
                     } catch (e: Exception) {
                         lastError = e.message ?: e.javaClass.simpleName
+                        failures += lastError to (SystemClock.elapsedRealtime() - tryStart)
                         log("Channel 15 failed: $lastError (${SystemClock.elapsedRealtime() - tryStart} ms)")
                         logSocketError(e)
                         tryFailed()
@@ -445,8 +460,10 @@ class BudsConnectionManager(private val context: Context) {
                     // Disconnect or a new connect raised the generation, so that attempt ends quietly.
                     if (generation == connectGeneration) {
                         log("Giving up after $totalTries connect tries. Tap CONNECT to retry manually.")
+                        val held = ConnectDiagnostics.heldByOther(failures)
+                        if (held) log("Every try failed fast with read ret -1: another device or app probably holds the earbuds.")
                         if (ConnectPolicy.showTryToast(user))
-                            toast(context.getString(R.string.connect_gave_up, totalTries))
+                            toast(if (held) context.getString(R.string.connect_held_by_other) else context.getString(R.string.connect_gave_up, totalTries))
                     }
                     reconnectAttempts = 0
                     return@Thread
@@ -1025,6 +1042,8 @@ class BudsConnectionManager(private val context: Context) {
             setFeatures(*writes.map { it.first to (it.second == 1) }.toTypedArray())
             return
         }
+        log("SYNC: tap key=0x%02X writes=%s confirm=%s restarts=%s".format(
+            key, writes.joinToString { "0x%02X=%d".format(it.first, it.second) }, confirm, restarts))
         syncHandler.post {
             if (restarts) audioAfterRestart = true
             execute(sync.tap(FeatureSync.Operation(key, writes, confirm, restarts), SystemClock.elapsedRealtime()))
@@ -1052,6 +1071,7 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBlocking(statusQuery(wire), "verify features")
             }
             is FeatureSync.Out.Changed -> {
+                log("SYNC: value 0x%02X -> %d".format(out.id, out.value))
                 featureStates = featureStates + (out.id to out.value)
                 handler.post {
                     listeners.forEach {
@@ -1060,7 +1080,10 @@ class BudsConnectionManager(private val context: Context) {
                     }
                 }
             }
-            is FeatureSync.Out.Busy -> handler.post { listeners.forEach { it.onSettingBusy(out.key, out.on) } }
+            is FeatureSync.Out.Busy -> {
+                log("SYNC: key 0x%02X busy=%s".format(out.key, out.on))
+                handler.post { listeners.forEach { it.onSettingBusy(out.key, out.on) } }
+            }
             is FeatureSync.Out.Toast -> {
                 log("FEATURE %s: key=0x%02X kind=%s codec=%s".format(
                     java.util.Locale.ROOT, toastLogName(out.kind), out.key, toastKindName(out.kind), codec
@@ -1860,7 +1883,8 @@ class BudsConnectionManager(private val context: Context) {
         // (high-quality audio needs an LDAC or LHDC link on buds that offer a codec list; reports #33, #42, #44).
         if (cmd == OpoProtocol.CMD_SET_FEATURE or 0x8000) {
             val status = payload.firstOrNull()?.toInt()?.and(0xFF) ?: 0
-            val engineSeq = wireToEngine.remove(seq)
+            val engineSeq = takeEngineSeq(seq)
+            log("SYNC: write ack seq=0x%02X status=%d %s".format(seq, status, if (engineSeq != null) "engine request" else "no engine request"))
             if (engineSeq != null) {
                 // Sent by the feature-sync engine: it decides what the refusal means and what to toast.
                 featureWrites.remove(seq)
@@ -1945,7 +1969,8 @@ class BudsConnectionManager(private val context: Context) {
                 }
             }
             // A reply to our own read carries the engine's number back to it (null for any other read).
-            val engineSeq = wireToEngine.remove(seq)
+            val engineSeq = takeEngineSeq(seq)
+            if (engineSeq != null) log("SYNC: status reply seq=0x%02X answers engine read".format(seq))
             syncHandler.post {
                 // The first reply of a connection primes the engine silently: a report with equal
                 // values emits nothing, so the old-path switches keep their own paint.
@@ -2172,7 +2197,17 @@ class BudsConnectionManager(private val context: Context) {
         val anc = AncModes.of(context)
         log("PRODUCT ID: $id, model: ${ModelCatalog.current(context)?.name ?: "unknown"} (${if (ModelCatalog.manual(context) != null) "picked by hand" else ModelCatalog.rule(context)}), ANC: " + (listOf(AncModes.OFF, AncModes.TRANSPARENCY, AncModes.ADAPTIVE) +
             AncModes.LEVELS).filter { anc.supports(it) }.joinToString { "$it=${anc.bit(it)}" }.ifEmpty { "none" })
+        ModelCatalog.current(context)?.json?.let { log("MODEL DATA: ${modelFlags(it)}") }
         handler.post { listeners.forEach { it.onCapabilities() } }
+    }
+
+    /** The model entry in one line: scalar values in full, lists and objects by size. It shows which data rules apply. */
+    private fun modelFlags(json: org.json.JSONObject): String = json.keys().asSequence().joinToString(" ") { k ->
+        when (val v = json.get(k)) {
+            is org.json.JSONArray -> "$k[${v.length()}]"
+            is org.json.JSONObject -> "$k{${v.length()}}"
+            else -> "$k=$v"
+        }
     }
 
     /** A gesture table read: only a reply with entries replaces the stored table (a write is built from it). */

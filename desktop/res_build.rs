@@ -27,7 +27,7 @@ const STRINGS: &[&str] = &[
     "token_accent", "token_text", "token_text_secondary", "token_outline", "contrast_warning", "preset_hue",
     "preset_saturation", "preset_brightness", "preset_recent", "preset_hex",
     "desktop_nav_overview", "desktop_nav_app_settings", "action_dev_tools", "settings_language_title", "settings_language_sub", "language_system",
-    "row_hires_title", "row_hires_sub", "row_hires_sub_off", "row_spatial_title", "row_spatial_sub", "spatial_fixed", "spatial_head_tracking", "codec_dialog_title", "codec_dialog_accept",
+    "row_hires_title", "row_hires_sub", "row_hires_sub_off", "row_hires_sub_codec", "row_spatial_title", "row_spatial_sub", "spatial_fixed", "spatial_head_tracking", "codec_dialog_title", "codec_dialog_accept",
     "codec_msg_reconnect", "codec_msg_hires_drops_spatial", "codec_msg_spatial_drops_hires",
     "settings_issues_title", "settings_issues_sub", "issues_none", "issue_spatial_silent_title", "issue_spatial_silent_body",
     "issue_hires_spatial_title", "issue_hires_spatial_body", "issue_hires_no_codec_title", "issue_hires_no_codec_body", "about_discord_desc", "reply_title",
@@ -57,6 +57,7 @@ const STRINGS: &[&str] = &[
     "firmware_dialog_body", "dialog_close", "dialog_cancel", "dual_add_ok",
     "row_vocal_title", "row_vocal_sub", "row_wind_noise_title", "row_wind_noise_sub", "row_game_sound_title", "row_game_sound_sub", "row_smart_volume_title",
     "row_smart_volume_sub", "row_adaptive_volume_title", "row_adaptive_volume_sub", "row_adaptive_ear_title",
+    "row_game_eq_title", "row_game_eq_sub",
     "row_adaptive_ear_sub", "row_sleep_title", "row_sleep_sub", "row_lost_title", "row_lost_sub", "row_speech_title", "row_speech_sub",
     "row_hearing_optimize_title", "row_hearing_optimize_sub", "hearing_optimize_confirm", "row_long_press_volume_title",
     "row_long_press_volume_sub", "row_head_motion_title", "row_head_motion_sub", "row_swift_pair_title",
@@ -111,6 +112,8 @@ const STRINGS: &[&str] = &[
     "disconnect_title", "disconnect_body", "codec_dialog_deny",
     "crash_saved_to", "crash_share", "crash_share_title", "perm_title", "perm_body", "perm_action",
     "about_privacy_reply", "issues_dialog_body", "issues_dialog_action",
+    // The desktop tray menu.
+    "tray_open", "tray_quit",
 ];
 
 fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {

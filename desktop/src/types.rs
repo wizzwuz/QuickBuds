@@ -64,6 +64,12 @@ pub const CMD_GAME_SOUND: u16 = 0x0423;
 
 pub const CMD_QUERY_GAME_SOUND: u16 = 0x012B;
 
+/// Game equalizer (PROTOCOL.md section 18): switch feature `21`, and `0x0420 01 <state>` tells the buds that a
+/// game app is open. The state applies only while the switch is on.
+pub const CMD_GAME_EQ_STATE: u16 = 0x0420;
+
+pub const FEATURE_GAME_EQ: u8 = 0x21;
+
 /// Head gesture mapping `<type>` (0 nod answers, 1 shake answers); read `0x0134`, the type comes as push `F5`.
 pub const CMD_SET_HEAD_MOTION: u16 = 0x0431;
 
@@ -163,6 +169,20 @@ pub fn codecs_of(mask: u16) -> Vec<u8> {
 pub fn codec_name(codec: u8) -> String {
     ["SBC", "AAC", "LDAC", "aptX", "aptX HD", "aptX Adaptive", "LHDC", "LHDC"].get(codec as usize - 1)
         .map_or(format!("#{codec}"), |n| n.to_string())
+}
+
+/// The high-quality codecs of `models.json`, best first, with the names the UI shows
+/// (`ModelCatalog.HIRES_CODECS`).
+pub const HIRES_NAMES: [(&str, &str); 6] = [
+    ("lhdc5", "LHDC 5.0"), ("lhdc", "LHDC"), ("ldac", "LDAC"),
+    ("aptx-adaptive", "aptX Adaptive"), ("aptx-hd", "aptX HD"), ("aptx", "aptX"),
+];
+
+/// The model's own best high-quality codec (`ModelCatalog.bestHiResCodec`). None when the model has no
+/// `codecs` key or lists none of them.
+pub fn best_hires_codec(model: Option<&Value>) -> Option<&'static str> {
+    let tokens = model?.get("codecs")?.as_array()?;
+    HIRES_NAMES.iter().find(|(token, _)| tokens.iter().any(|v| v.as_str() == Some(token))).map(|(_, name)| *name)
 }
 
 /// `0x010D`: count, then the feature ids (`OpoProtocol.queryStatus`): the model's `statusQuery` (HeyMelody's

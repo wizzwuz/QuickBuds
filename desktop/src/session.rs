@@ -104,6 +104,9 @@ pub enum Cmd {
     AlertVolume(u8),
     TapLevel(u8),
     GameSoundType(u8),
+    /// Game equalizer (feature `21`): the switch, then the state the phone's app watcher sends. The desktop
+    /// has no app detection, so a switch that is on means a game app is open.
+    GameEq(bool),
     /// `0x0422`: 0 off, 1 fixed, 2 head tracking, then the read-back.
     SpatialType(u8),
     /// `0x041A` codec and Hi-Res; the buds restart and the link comes back by itself.
@@ -365,6 +368,16 @@ impl<'a> Conn<'a> {
         Ok(())
     }
 
+    /// The engine number for a reply with wire seq `seq`. A model with `"seqless":1` (realme Buds T100, report #100)
+    /// answers with its own counter, so the newest outstanding engine request is the one that the reply answers.
+    fn take_engine_seq(&self, sync: &mut Sync, seq: u8) -> Option<u32> {
+        if let Some(engine) = sync.wire.remove(&seq) { return Some(engine); }
+        if !self.s.model.is_some_and(|m| m["seqless"] == 1) { return None; }
+        let wire = *sync.wire.iter().max_by_key(|(_, e)| **e)?.0;
+        log("NOTE", Vec::new(), Some(format!("SYNC: reply seq=0x{seq:02X} pairs with request seq=0x{wire:02X} (seqless model)")));
+        sync.wire.remove(&wire)
+    }
+
     /// Runs the feature-sync engine's output list. True when the snapshot changed.
     fn exec(&mut self, outs: Vec<Out>, sync: &mut Sync) -> Result<bool, String> {
         let mut changed = false;
@@ -440,7 +453,7 @@ impl<'a> Conn<'a> {
                 if cmd_of(&p) == CMD_SET_FEATURE | 0x8000 {
                     let seq = crate::types::seq_of(&p);
                     let status = payload_of(&p).first().copied().unwrap_or(0);
-                    match sync.wire.remove(&seq) {
+                    match self.take_engine_seq(sync, seq) {
                         Some(engine_seq) => {
                             self.feature_writes.remove(&seq);
                             changed |= self.exec(sync.engine.ack(engine_seq, status, now_ms()), sync)?;
@@ -458,7 +471,7 @@ impl<'a> Conn<'a> {
                 // The engine's own reports: a status read reply, or a game-mode push.
                 match &e {
                     Some(Event::Features(f)) => {
-                        let seq = sync.wire.remove(&crate::types::seq_of(&p));
+                        let seq = self.take_engine_seq(sync, crate::types::seq_of(&p));
                         changed |= self.exec(sync.engine.report(f, seq, now_ms(), false), sync)?;
                     }
                     Some(Event::GameMode(pl)) => {
@@ -693,7 +706,10 @@ impl<'a> Conn<'a> {
                     Cmd::LowLatency(on) => {
                         // One engine operation: the switch moves when the buds push the state.
                         let key = self.s.caps.game_mode_id();
-                        let op = Operation { key, writes: vec![(key, on as u8)], confirm: Confirm::Push, restarts: false };
+                        // A model whose buds apply the write and never push sets "gameConfirm":"read" (T300, T310).
+                        let confirm = if self.s.model.is_some_and(|m| m["gameConfirm"] == "read") { Confirm::Read } else { Confirm::Push };
+                        log("NOTE", Vec::new(), Some(format!("SYNC: tap key=0x{key:02X} on={on} confirm={confirm:?}")));
+                        let op = Operation { key, writes: vec![(key, on as u8)], confirm, restarts: false };
                         self.exec(sync.engine.tap(op, now_ms()), sync)?;
                     }
                     // Each EQ write updates the state first, so the replies before the new values
@@ -789,6 +805,17 @@ impl<'a> Conn<'a> {
                         self.tx(cmd::game_sound(t))?;
                         self.pump(400, sync)?;
                         self.tx(cmd::game_sound_read())?;
+                    }
+                    // The switch, then the state the phone's watcher would send: the desktop has no app detection.
+                    Cmd::GameEq(on) => {
+                        self.hold(FEATURE_GAME_EQ, on);
+                        if let Some(x) = self.s.features.iter_mut().find(|x| x.0 == FEATURE_GAME_EQ) { x.1 = on as u8; }
+                        (self.emit)(self.s.clone());
+                        self.tx(cmd::feature(FEATURE_GAME_EQ, on))?;
+                        self.pump(150, sync)?;
+                        self.tx(cmd::game_eq(on))?;
+                        self.pump(300, sync)?;
+                        self.send(CMD_QUERY_STATUS, Some(0x00), &status_query(self.s.model))?;
                     }
                     Cmd::SpatialType(t) => {
                         self.s.spatial_type = Some(t);
