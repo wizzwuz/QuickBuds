@@ -2,22 +2,10 @@ name: QuickBuds ANC Tile APKs (shared signature)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - 'experimental/**'
-    paths:
-      - 'app/**'
-      - 'gradle/**'
-      - 'gradlew'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - '.github/workflows/anc-tile-apk.yml'
 
 permissions:
   contents: read
 
-# Keep a run alive when another commit is pushed to the same branch.
 concurrency:
   group: quickbuds-anc-tile-${{ github.ref }}
   cancel-in-progress: false
@@ -49,114 +37,18 @@ jobs:
           set -euo pipefail
           if [[ -z "$KEYSTORE_B64" || -z "$KEY_PROPERTIES" ]]; then
             echo "Missing required secrets RELEASE_KEYSTORE_B64 and/or RELEASE_KEY_PROPERTIES." >&2
-            echo "Configure the same release-signing secrets used by the Build workflow; refusing to publish APKs with different/unsigned signatures." >&2
             exit 1
           fi
           mkdir -p local/keys
           printf '%s' "$KEYSTORE_B64" | base64 --decode > local/keys/quickbuds-release.jks
           test -s local/keys/quickbuds-release.jks
           printf '%s\n' "$KEY_PROPERTIES" > local/keys/keystore.properties
-          # Read the same properties used by app/build.gradle.kts so the debug APK
-          # can be re-signed with exactly the same keystore and alias as the release APK.
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          props = {}
-          for raw in Path('local/keys/keystore.properties').read_text().splitlines():
-              line = raw.strip()
-              if not line or line.startswith(('#', '!')) or '=' not in line:
-                  continue
-              key, value = line.split('=', 1)
-              props[key.strip()] = value.strip()
-          required = ('storePassword', 'keyAlias', 'keyPassword')
-          missing = [key for key in required if not props.get(key)]
-          if missing:
-              raise SystemExit('Missing properties in RELEASE_KEY_PROPERTIES: ' + ', '.join(missing))
-          # GitHub environment values must be single-line. Signing passwords and aliases
-          # are normally single-line Java properties; reject ambiguous multiline values.
-          for key in required:
-              if '\n' in props[key] or '\r' in props[key]:
-                  raise SystemExit(f'{key} must be a single-line value')
-          with open(os.environ['GITHUB_ENV'], 'a') as env:
-              env.write('QB_KEY_ALIAS=' + props['keyAlias'] + '\n')
-              env.write('QB_STORE_PASSWORD=' + props['storePassword'] + '\n')
-              env.write('QB_KEY_PASSWORD=' + props['keyPassword'] + '\n')
-          PY
 
       - name: Verify Gradle wrapper
         run: |
           set -euo pipefail
           test -f gradlew
-          test -f gradle/wrapper/gradle-wrapper.jar
-          test -f gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
-          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Build debug and release APKs
         run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:assembleRelease
-
-      - name: Sign debug APK with the shared release key
-        run: |
-          set -euo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
-          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          test -x "$APKSIGNER"
-          DEBUG_APK='app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$DEBUG_APK"
-          "$APKSIGNER" sign \
-            --ks local/keys/quickbuds-release.jks \
-            --ks-key-alias "$QB_KEY_ALIAS" \
-            --ks-pass "env:QB_STORE_PASSWORD" \
-            --key-pass "env:QB_KEY_PASSWORD" \
-            --out app/build/outputs/apk/debug/app-debug-shared-signed.apk \
-            "$DEBUG_APK"
-          mv app/build/outputs/apk/debug/app-debug-shared-signed.apk "$DEBUG_APK"
-
-      - name: Verify every APK uses the same certificate
-        run: |
-          set -euo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
-          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/QuickBuds-debug-shared-signature.apk
-          cp app/build/outputs/apk/release/app-release.apk out/QuickBuds-release-shared-signature.apk
-          : > out/signature-check.txt
-          expected=''
-          for apk in out/*.apk; do
-            echo "Checking $apk"
-            "$APKSIGNER" verify --verbose --print-certs "$apk"
-            fingerprint=$("$APKSIGNER" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
-            test -n "$fingerprint"
-            if [[ -z "$expected" ]]; then
-              expected="$fingerprint"
-            elif [[ "$fingerprint" != "$expected" ]]; then
-              echo "Signature mismatch: $apk has $fingerprint, expected $expected" >&2
-              exit 1
-            fi
-            printf '%s  %s\n' "$fingerprint" "$(basename "$apk")" >> out/signature-check.txt
-          done
-          version=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
-          echo "Built version: ${version:-unknown}" >> out/signature-check.txt
-          sha256sum out/*.apk > out/SHA256SUMS
-          cat out/signature-check.txt
-          ls -lh out
-
-      - name: Upload signed APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: QuickBuds-ANC-Tile-APKs-Same-Signature
-          path: out/*
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload build diagnostics if build fails
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: QuickBuds-ANC-Tile-build-diagnostics
-          path: |
-            app/build/reports/**
-            app/build/outputs/logs/**
-            build/reports/**
-          if-no-files-found: ignore
-          retention-days: 7

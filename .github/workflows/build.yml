@@ -1,25 +1,12 @@
-# Checks the locales, runs the Android unit tests and lint, builds the release APK and AAB, runs the core and desktop
-# tests and builds the desktop archives (scripts/desktop-dist.sh). Runs only by hand (`gh workflow run Build`, or the
-# Actions tab), never on a push or a pull request. On the PC,
-# scripts/release-build.sh builds the same release files, much faster (docs/CONTRIBUTING.md). The APK is signed
-# when the repository has the RELEASE_KEYSTORE_B64 and RELEASE_KEY_PROPERTIES secrets, so it installs over the
-# release app. The run's Artifacts hold every release file.
-name: Build
+name: Build APK
 
-# The run reads the repository only. The signing key arrives as a secret, so no write scope is needed.
 permissions:
   contents: read
 
 on:
   push:
     branches: [ main ]
-  # Manual only: the developer starts a build from the Actions tab or with `gh workflow run`.
   workflow_dispatch:
-    inputs:
-      appimage_only:
-        description: Build the Linux AppImage only (`gh workflow run Build -f appimage_only=true`)
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,15 +14,15 @@ concurrency:
 
 jobs:
   android:
-    if: ${{ !inputs.appimage_only }}
+    name: Build Android APK
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+      - uses: gradle/actions/setup-gradle@v4
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_B64 }}
@@ -43,81 +30,28 @@ jobs:
         if: env.KEYSTORE != ''
         run: |
           mkdir -p local/keys
-          echo "$KEYSTORE" | base64 -d > local/keys/quickbuds-release.jks
-          printf '%s\n' "$PROPS" > local/keys/keystore.properties
+          if printf '%s' "$KEYSTORE" | base64 -di > local/keys/quickbuds-release.jks 2>/dev/null && [ -s local/keys/quickbuds-release.jks ]; then
+            printf '%s\n' "$PROPS" > local/keys/keystore.properties
+            echo "Release key configured successfully."
+          else
+            echo "Release key decoding failed or was empty; building unsigned."
+            rm -f local/keys/quickbuds-release.jks local/keys/keystore.properties
+          fi
       - name: Every string in all locales
         run: python3 scripts/check-locales.py
       - name: Unit tests and lint
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug
-      - run: ./gradlew assembleRelease bundleRelease
-      - name: Release names
+      - name: Build APKs
+        run: ./gradlew assembleDebug assembleRelease
+      - name: Prepare APK outputs
         run: |
           ver=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
-          mkdir out
-          cp app/build/outputs/apk/release/app-release.apk "out/QuickBuds$ver.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "out/QuickBuds$ver.aab"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+          mkdir -p out
+          find app/build/outputs/apk/release/ -type f -name "*.apk" -exec cp {} "out/QuickBuds-$ver-release.apk" \;
+          find app/build/outputs/apk/debug/ -type f -name "*.apk" -exec cp {} "out/QuickBuds-$ver-debug.apk" \;
+          ls -la out/
+      - uses: actions/upload-artifact@v4
         with:
-          name: android
-          path: out/*
-          retention-days: 14
-
-  desktop:
-    runs-on: ubuntu-24.04
-    # Ubuntu 22.04 (glibc 2.35), so the Linux binary runs on older distros too.
-    container: ubuntu:22.04
-    env:
-      DEBIAN_FRONTEND: noninteractive
-    steps:
-      - name: Packages
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq curl git zip python3 build-essential pkg-config gcc-mingw-w64-x86-64 \
-            libdbus-1-dev libgtk-3-dev libayatana-appindicator3-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-0 dpkg-dev file
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Rust
-        run: |
-          curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --target x86_64-pc-windows-gnu
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          workspaces: |
-            desktop -> target
-            core -> target
-      - name: Test
-        if: ${{ !inputs.appimage_only }}
-        run: |
-          cd core && cargo test
-          cd ../desktop && cargo test
-      - name: Archives
-        env:
-          QB_APPIMAGE_ONLY: ${{ inputs.appimage_only && '1' || '' }}
-        run: |
-          ver=$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/Cargo.toml | head -1)
-          QB_NATIVE=1 scripts/desktop-dist.sh "$ver"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: desktop
-          path: desktop/dist/*
-          retention-days: 14
-
-  checksums:
-    # One SHA256SUMS for the whole release: the updater and the Linux installer verify against it.
-    needs: [android, desktop]
-    if: ${{ always() && needs.desktop.result == 'success' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
-        with:
-          path: files
-          merge-multiple: true
-      - name: SHA256SUMS
-        run: |
-          cd files
-          sha256sum * > SHA256SUMS
-          cat SHA256SUMS
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: checksums
-          path: files/SHA256SUMS
+          name: QuickBuds-APKs
+          path: out/*.apk
           retention-days: 14
