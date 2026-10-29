@@ -1,7 +1,7 @@
 name: Build APK
 
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
           PROPS: ${{ secrets.RELEASE_KEY_PROPERTIES }}
         run: |
           set -euo pipefail
-          mkdir -p local/keys
+          mkdir -p keystore local/keys
           python3 - <<'PY'
           import os, sys, base64
 
@@ -41,6 +41,7 @@ jobs:
 
           configured = False
 
+          # 1. If valid secret exists, use it
           if raw_keystore:
               clean_b64 = ''.join(raw_keystore.split())
               try:
@@ -61,26 +62,45 @@ jobs:
               with open('local/keys/keystore.properties', 'w') as f:
                   f.write('\n'.join(lines) + '\n')
               print("Written keystore.properties from secret PROPS")
-          elif not os.path.exists('local/keys/quickbuds-release.jks') or not os.path.exists('local/keys/keystore.properties'):
-              print("Secret keystore not available or incomplete; generating persistent release keystore...")
+          # 2. If repo already has a persistent keystore, use it
+          elif os.path.exists('keystore/quickbuds-release.jks') and os.path.exists('keystore/keystore.properties'):
+              print("Using persistent repository keystore from keystore/...")
+              import shutil
+              shutil.copy('keystore/quickbuds-release.jks', 'local/keys/quickbuds-release.jks')
+              shutil.copy('keystore/keystore.properties', 'local/keys/keystore.properties')
+          # 3. Otherwise generate a persistent release keystore and save to keystore/
+          else:
+              print("Generating persistent release keystore...")
               cmd = (
                   'keytool -genkeypair -v -alias quickbuds -keyalg RSA -keysize 2048 -validity 10000 '
-                  '-keystore local/keys/quickbuds-release.jks -storepass quickbuds123 -keypass quickbuds123 '
+                  '-keystore keystore/quickbuds-release.jks -storepass quickbuds123 -keypass quickbuds123 '
                   '-dname "CN=QuickBuds, OU=QuickBuds, O=QuickBuds, L=Unknown, ST=Unknown, C=US"'
               )
               if os.system(cmd) != 0:
                   sys.exit(1)
-              with open('local/keys/keystore.properties', 'w') as f:
+              with open('keystore/keystore.properties', 'w') as f:
                   f.write(
-                      "storeFile=local/keys/quickbuds-release.jks\n"
+                      "storeFile=keystore/quickbuds-release.jks\n"
                       "storePassword=quickbuds123\n"
                       "keyAlias=quickbuds\n"
                       "keyPassword=quickbuds123\n"
                   )
-              print("Generated and configured release keystore successfully.")
+              import shutil
+              shutil.copy('keystore/quickbuds-release.jks', 'local/keys/quickbuds-release.jks')
+              shutil.copy('keystore/keystore.properties', 'local/keys/keystore.properties')
+              print("Generated persistent keystore.")
           PY
-          cp local/keys/quickbuds-release.jks quickbuds-release.jks || true
           cat local/keys/keystore.properties
+
+          # If keystore was just generated in keystore/, commit it so every build uses the exact same key!
+          if git status --porcelain keystore/ | grep -q .; then
+            echo "Committing persistent release keystore to repository..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keystore/quickbuds-release.jks keystore/keystore.properties
+            git commit -m "Add persistent release signing key for reproducible signatures [skip ci]" || true
+            git push origin HEAD:main || true
+          fi
 
       - name: Every string in all locales
         run: python3 scripts/check-locales.py
@@ -117,7 +137,7 @@ jobs:
           expected=""
           for apk in out/*.apk; do
             echo "Verifying: $apk"
-            # If not verified by Gradle signingConfig, sign with apksigner
+            # If not verified, sign with apksigner
             if ! "$APKSIGNER" verify "$apk" >/dev/null 2>&1; then
               echo "Signing $apk with release key using apksigner..."
               "$APKSIGNER" sign \
@@ -132,7 +152,7 @@ jobs:
             fi
             echo "Certificate details for $apk:"
             "$APKSIGNER" verify --verbose --print-certs "$apk"
-            fingerprint=$("$APKSIGNER" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+            fingerprint=$("$APKSIGNER" verify --print-certs "$apk" | grep -m 1 "certificate SHA-256 digest:" | sed -e 's/.*certificate SHA-256 digest:[[:space:]]*//' | tr -d '\r\n ')
             echo "SHA-256 Fingerprint: $fingerprint"
             test -n "$fingerprint"
             if [[ -z "$expected" ]]; then

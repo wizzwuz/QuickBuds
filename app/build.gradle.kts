@@ -13,7 +13,8 @@ plugins {
 // local/keys/ (git-ignored, local-only — BACK IT UP: the in-app updater can only install over an app
 // signed with the same key). Without that file, release builds come out unsigned, as before.
 val keyProps = Properties().apply {
-    val f = rootProject.file("local/keys/keystore.properties")
+    val f = rootProject.file("local/keys/keystore.properties").takeIf { it.exists() }
+        ?: rootProject.file("keystore/keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
@@ -37,11 +38,14 @@ android {
             val fileProp = keyProps.getProperty("storeFile") ?: "local/keys/quickbuds-release.jks"
             val target = rootProject.file(fileProp).takeIf { it.exists() }
                 ?: rootProject.file("local/keys/$fileProp").takeIf { it.exists() }
+                ?: rootProject.file("keystore/quickbuds-release.jks").takeIf { it.exists() }
                 ?: rootProject.file("local/keys/quickbuds-release.jks")
             storeFile = target
             storePassword = keyProps.getProperty("storePassword")
             keyAlias = keyProps.getProperty("keyAlias")
             keyPassword = keyProps.getProperty("keyPassword") ?: keyProps.getProperty("storePassword")
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
