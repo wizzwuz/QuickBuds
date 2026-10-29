@@ -113,6 +113,10 @@ object ModelCatalog {
     fun current(context: Context): Model? =
         manual(context)?.let { id -> all(context).firstOrNull { it.id == id } } ?: detected(context)
 
+
+    /** Triple-connection wording is specific to the standard realme Buds T500 Pro model. */
+    fun isTripleConnectionModel(context: Context): Boolean = current(context)?.id == "066452"
+
     /**
      * True once this model's buds have reported "in ear". Some models have no in-ear sensor and always report "out"
      * (report #46); until the first "in ear" the app shows "out" as in the ear, with no wear label.

@@ -1086,7 +1086,9 @@ class MainActivity : Activity(), BudsConnectionManager.Listener {
         addRow(
             "dual",
             SettingRowFactory.build(
-                this, R.drawable.ic_devices, R.string.row_dual_title, R.string.row_dual_sub,
+                this, R.drawable.ic_devices,
+                if (ModelCatalog.isTripleConnectionModel(this)) R.string.triple_title else R.string.row_dual_title,
+                if (ModelCatalog.isTripleConnectionModel(this)) R.string.triple_switch_sub else R.string.row_dual_sub,
                 SettingRowFactory.buildChevron(this)
             ) { startActivity(Intent(this, DualDeviceActivity::class.java)) }
         )

@@ -69,7 +69,7 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
 
         val dp = { v: Float -> ThemeRes.dp(this, v) }
         val root = SettingRowFactory.screen(this)
-        root.addView(SettingRowFactory.title(this, R.string.dual_title))
+        root.addView(SettingRowFactory.title(this, if (ModelCatalog.isTripleConnectionModel(this)) R.string.triple_title else R.string.dual_title))
 
         dualSwitch = SettingRowFactory.buildSwitch(this, false)
         dualSwitch.setOnCheckedChangeListener { _, on ->
@@ -78,7 +78,10 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
         root.addView(cardView().apply {
             addView(
                 SettingRowFactory.build(
-                    this@DualDeviceActivity, 0, R.string.dual_title, R.string.dual_switch_sub, dualSwitch
+                    this@DualDeviceActivity, 0,
+                    if (ModelCatalog.isTripleConnectionModel(this@DualDeviceActivity)) R.string.triple_title else R.string.dual_title,
+                    if (ModelCatalog.isTripleConnectionModel(this@DualDeviceActivity)) R.string.triple_switch_sub else R.string.dual_switch_sub,
+                    dualSwitch
                 ) { dualSwitch.performClick() }
             )
         })
@@ -143,9 +146,11 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
                     textSize = 12f
                     setPadding(0, dp(2f), 0, 0)
                 })
-                if (manages && !self) {
+                if (d.connected || (manages && !self)) {
                     background = ThemeRes.ripple(context)
-                    setOnClickListener { confirmConnect(d) }
+                    setOnClickListener {
+                        if (d.connected) confirmDisconnect(d) else confirmConnect(d)
+                    }
                 }
             })
         }
@@ -155,6 +160,18 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
             SettingRowFactory.build(
                 this, 0, R.string.dual_add_title, 0, SettingRowFactory.buildChevron(this)
             ) { showAddDevice() }
+        )
+    }
+
+    /** Connected-device rows always ask before sending the buds' disconnect command. */
+    private fun confirmDisconnect(d: BudsConnectionManager.PairedDevice) {
+        ConfirmDialog.show(
+            this,
+            getString(R.string.disconnect_or_not),
+            null,
+            getString(R.string.disconnect_ok),
+            cancelRes = R.string.dialog_cancel,
+            onConfirm = { manager?.connectDevice(d.mac, false) }
         )
     }
 
