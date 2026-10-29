@@ -73,21 +73,20 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:resizeableActivity="true">
 
 
         <!--
-          Every activity below is locked to portrait — 2026-09-22, "the app should be
-          portrait mode only no rotation." No layout in this app has a landscape variant, so an
-          allowed rotation would just stretch/reflow the existing portrait layouts, not show a
-          real landscape design. `screenOrientation` has no `<application>`-level equivalent; it
-          has to be repeated on every `<activity>`.
+          Activities follow the device sensor so tablets in landscape stay in landscape instead
+          of being forced back to portrait. `screenOrientation` has no `<application>`-level
+          equivalent; it has to be repeated on every `<activity>`.
         -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait">
+            android:screenOrientation="sensor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -97,94 +96,94 @@
         <activity
             android:name=".ui.SetupActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.DevToolsActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.EqActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.GestureActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.GoldenSoundActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.EarbudSettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.DualDeviceActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.HomeLayoutActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.ReportActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.KnownIssuesActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.ModelTestActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.ThemeActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.PresetEditActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensor"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.AboutActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.UpdateActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <activity
             android:name=".ui.ModelActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
         <activity
             android:name=".ui.LanguageActivity"
             android:exported="false"
             android:configChanges="locale|layoutDirection|keyboard|keyboardHidden|navigation|touchscreen|smallestScreenSize|screenLayout"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="sensor" />
 
         <!--
           FileProvider for the app-update flow. The downloaded APK lives in the
@@ -311,7 +310,7 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:screenOrientation="portrait">
+            android:screenOrientation="sensor">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>

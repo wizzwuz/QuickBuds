@@ -27,6 +27,7 @@ import com.spizganed.quickbuds.widget.WidgetStateStore
 class AncTileLongPressActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var palette: Palette
+    private var useGlassBlur: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeRes.select(this)
@@ -40,12 +41,19 @@ class AncTileLongPressActivity : Activity() {
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.decorView.setBackgroundColor(Color.TRANSPARENT)
+        // Glass theme always requests the 40 dp system blur when the OS supports it.
+        useGlassBlur = ThemeRes.glass(this)
         window.attributes = window.attributes.apply {
             width = dp(340)
             height = WindowManager.LayoutParams.WRAP_CONTENT
             gravity = Gravity.CENTER
             dimAmount = 0f
             flags = flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                blurBehindRadius = if (useGlassBlur) dp(40) else 0
+                flags = if (useGlassBlur) flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                    else flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
+            }
         }
     }
 
@@ -57,7 +65,12 @@ class AncTileLongPressActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(16))
             background = GradientDrawable().apply {
-                setColor(palette.card)
+                // Keep the text readable while allowing the system-blurred backdrop to show through.
+                setColor(if (useGlassBlur) {
+                    Color.argb(204, Color.red(palette.card), Color.green(palette.card), Color.blue(palette.card))
+                } else {
+                    palette.card
+                })
                 cornerRadius = dp(28).toFloat()
                 setStroke(dp(1), palette.outline)
             }
@@ -98,6 +111,7 @@ class AncTileLongPressActivity : Activity() {
         }
         addFeatureSwitch("LHDC", Feature.HIRES_CODEC)
         addFeatureSwitch("Spatial Sound", Feature.SPATIAL_SOUND)
+        addLowLatencySwitch()
 
         setContentView(root)
     }
@@ -142,6 +156,30 @@ class AncTileLongPressActivity : Activity() {
         }
     }
 
+    private fun addLowLatencySwitch() {
+        val states = Capabilities.reply(this)
+        val gameModeId = Capabilities.gameModeId(this)
+        val supported = states == null || states.containsKey(gameModeId)
+        val toggle = Switch(this).apply {
+            text = "Low Latency"
+            textSize = 15f
+            setTextColor(palette.text)
+            isChecked = WidgetStateStore.read(this@AncTileLongPressActivity).gameMode
+            isEnabled = supported
+            alpha = if (supported) 1f else 0.45f
+        }
+        toggle.setOnCheckedChangeListener { _, requestedOn ->
+            val intent = Intent(this@AncTileLongPressActivity, BudsService::class.java).apply {
+                action = BudsService.ACTION_TILE_SET_GAME_MODE
+                putExtra(BudsService.EXTRA_TILE_GAME_MODE_ON, requestedOn)
+            }
+            startBudsService(intent)
+        }
+        val row = LinearLayout.LayoutParams(-1, dp(52))
+        row.topMargin = dp(2)
+        root.addView(toggle, row)
+    }
+
     private fun addFeatureSwitch(label: String, feature: Int) {
         val savedStates = Capabilities.reply(this)
         val supported = savedStates == null || savedStates.containsKey(feature)
@@ -163,18 +201,7 @@ class AncTileLongPressActivity : Activity() {
 
     private fun attachFeatureListener(toggle: Switch, feature: Int) {
         toggle.setOnCheckedChangeListener { _, requestedOn ->
-            // Enforce mutual exclusion visually without firing a second, conflicting command.
-            if (requestedOn) {
-                val other = if (feature == Feature.HIRES_CODEC) Feature.SPATIAL_SOUND else Feature.HIRES_CODEC
-                for (i in 0 until root.childCount) {
-                    val child = root.getChildAt(i)
-                    if (child is Switch && child.tag == other) {
-                        child.setOnCheckedChangeListener(null)
-                        child.isChecked = false
-                        attachFeatureListener(child, other)
-                    }
-                }
-            }
+            // Keep LHDC and Spatial Sound independent so the user can test both together.
             val intent = Intent(this@AncTileLongPressActivity, BudsService::class.java).apply {
                 action = BudsService.ACTION_TILE_SET_FEATURE
                 putExtra(BudsService.EXTRA_TILE_FEATURE, feature)
