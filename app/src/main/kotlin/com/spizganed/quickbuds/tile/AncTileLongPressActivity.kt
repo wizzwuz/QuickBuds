@@ -41,8 +41,7 @@ class AncTileLongPressActivity : Activity() {
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.decorView.setBackgroundColor(Color.TRANSPARENT)
-        // Glass theme always requests the 40 dp system blur when the OS supports it.
-        useGlassBlur = ThemeRes.glass(this)
+        useGlassBlur = ThemeRes.glass(this) && ThemeRes.windowBlur(this)
         window.attributes = window.attributes.apply {
             width = dp(340)
             height = WindowManager.LayoutParams.WRAP_CONTENT
@@ -65,12 +64,7 @@ class AncTileLongPressActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(16))
             background = GradientDrawable().apply {
-                // Keep the text readable while allowing the system-blurred backdrop to show through.
-                setColor(if (useGlassBlur) {
-                    Color.argb(204, Color.red(palette.card), Color.green(palette.card), Color.blue(palette.card))
-                } else {
-                    palette.card
-                })
+                setColor(palette.card)
                 cornerRadius = dp(28).toFloat()
                 setStroke(dp(1), palette.outline)
             }
