@@ -133,5 +133,18 @@ object ModelCatalog {
         prefs(context).edit().apply { if (id == null) remove(KEY_MANUAL) else putString(KEY_MANUAL, id) }.apply()
     }
 
+    /** True only when realme Buds T500 Pro is connected (or selected by hand). */
+    fun isRealmeBudsT500Pro(context: Context): Boolean {
+        val model = current(context)
+        if (model != null) {
+            if (model.id.equals("066452", ignoreCase = true) ||
+                model.id.equals("067452", ignoreCase = true) ||
+                model.id.equals("067852", ignoreCase = true)) return true
+            if (model.name.contains("realme Buds T500 Pro", ignoreCase = true)) return true
+        }
+        val name = prefs(context).getString(KEY_DEVICE_NAME, null)
+        return name?.contains("realme Buds T500 Pro", ignoreCase = true) == true
+    }
+
     private fun prefs(context: Context) = context.getSharedPreferences(ThemeRes.PREFS_NAME, Context.MODE_PRIVATE)
 }

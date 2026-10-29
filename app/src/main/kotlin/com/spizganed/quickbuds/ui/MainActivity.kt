@@ -1086,7 +1086,9 @@ class MainActivity : Activity(), BudsConnectionManager.Listener {
         addRow(
             "dual",
             SettingRowFactory.build(
-                this, R.drawable.ic_devices, R.string.row_dual_title, R.string.row_dual_sub,
+                this, R.drawable.ic_devices,
+                if (ModelCatalog.isRealmeBudsT500Pro(this)) R.string.row_triple_title else R.string.row_dual_title,
+                if (ModelCatalog.isRealmeBudsT500Pro(this)) R.string.row_triple_sub else R.string.row_dual_sub,
                 SettingRowFactory.buildChevron(this)
             ) { startActivity(Intent(this, DualDeviceActivity::class.java)) }
         )
@@ -1274,6 +1276,7 @@ class MainActivity : Activity(), BudsConnectionManager.Listener {
         deviceNameText.text = ModelCatalog.current(this)?.name
             ?: getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).getString(ModelCatalog.KEY_DEVICE_NAME, null)
             ?: getString(R.string.default_device_name)
+        updateDualRowTitle()
     }
 
     private fun rowSupported(key: String) = MainActivity.rowSupported(this, key)
@@ -1288,6 +1291,19 @@ class MainActivity : Activity(), BudsConnectionManager.Listener {
         supportSignature = sig
         if (AncModes.of(this) !== ancModes) { buildAnc(); renderAnc(activeAncMode) }
         layoutFeatureRows(rows)
+        updateDualRowTitle()
+    }
+
+    /** For realme Buds T500 Pro, Dual Connection becomes Triple Connection on the main screen. */
+    private fun updateDualRowTitle() {
+        val row = featureRows["dual"] ?: return
+        val isTriple = ModelCatalog.isRealmeBudsT500Pro(this)
+        row.findViewWithTag<TextView>(SettingRowFactory.TITLE_TAG)?.setText(
+            if (isTriple) R.string.row_triple_title else R.string.row_dual_title
+        )
+        row.findViewWithTag<TextView>(SettingRowFactory.SUBTITLE_TAG)?.setText(
+            if (isTriple) R.string.row_triple_sub else R.string.row_dual_sub
+        )
     }
 
     /** The sound-settings rows by key, in build (default) order; laid out by [layoutFeatureRows]. */

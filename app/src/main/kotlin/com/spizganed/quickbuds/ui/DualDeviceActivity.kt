@@ -68,8 +68,9 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
         super.onCreate(savedInstanceState)
 
         val dp = { v: Float -> ThemeRes.dp(this, v) }
+        val isTriple = ModelCatalog.isRealmeBudsT500Pro(this)
         val root = SettingRowFactory.screen(this)
-        root.addView(SettingRowFactory.title(this, R.string.dual_title))
+        root.addView(SettingRowFactory.title(this, if (isTriple) R.string.triple_title else R.string.dual_title))
 
         dualSwitch = SettingRowFactory.buildSwitch(this, false)
         dualSwitch.setOnCheckedChangeListener { _, on ->
@@ -78,7 +79,10 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
         root.addView(cardView().apply {
             addView(
                 SettingRowFactory.build(
-                    this@DualDeviceActivity, 0, R.string.dual_title, R.string.dual_switch_sub, dualSwitch
+                    this@DualDeviceActivity, 0,
+                    if (isTriple) R.string.triple_title else R.string.dual_title,
+                    if (isTriple) R.string.triple_switch_sub else R.string.dual_switch_sub,
+                    dualSwitch
                 ) { dualSwitch.performClick() }
             )
         })
@@ -143,7 +147,10 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
                     textSize = 12f
                     setPadding(0, dp(2f), 0, 0)
                 })
-                if (manages && !self) {
+                if (d.connected) {
+                    background = ThemeRes.ripple(context)
+                    setOnClickListener { confirmDisconnect(d) }
+                } else if (manages && !self) {
                     background = ThemeRes.ripple(context)
                     setOnClickListener { confirmConnect(d) }
                 }
@@ -158,12 +165,30 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
         )
     }
 
-    /** Connect or disconnect another device, asked first as HeyMelody does. */
+    /** Disconnect a connected device after user confirmation in the "Disconnect or Not" dialog. */
+    private fun confirmDisconnect(d: BudsConnectionManager.PairedDevice) {
+        val sheet = BottomSheetDialog(this)
+        val self = d.thisPhone || d.name == ownName()
+        sheet.title(getString(R.string.disconnect_dialog_title))
+            .message(getString(R.string.dual_disconnect_q, d.name))
+            .cancel(getString(R.string.action_cancel)) { sheet.close() }
+            .confirm(getString(R.string.action_ok)) {
+                sheet.close()
+                manager?.connectDevice(d.mac, false)
+                if (self) {
+                    window.decorView.postDelayed({
+                        manager?.disconnect()
+                    }, 250)
+                }
+            }
+            .show()
+    }
+
+    /** Connect another device, asked first as HeyMelody does. */
     private fun confirmConnect(d: BudsConnectionManager.PairedDevice) {
-        val on = !d.connected
-        ConfirmDialog.show(this, getString(if (on) R.string.dual_connect_q else R.string.dual_disconnect_q, d.name), null,
-            getString(if (on) R.string.conn_action_connect else R.string.conn_action_disconnect)) {
-            manager?.connectDevice(d.mac, on)
+        ConfirmDialog.show(this, getString(R.string.dual_connect_q, d.name), null,
+            getString(R.string.conn_action_connect)) {
+            manager?.connectDevice(d.mac, true)
         }
     }
 

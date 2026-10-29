@@ -11,6 +11,8 @@ permissions:
   contents: read
 
 on:
+  push:
+    branches: [ main ]
   # Manual only: the developer starts a build from the Actions tab or with `gh workflow run`.
   workflow_dispatch:
     inputs:
