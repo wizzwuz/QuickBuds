@@ -34,10 +34,14 @@ android {
 
     signingConfigs {
         if (!keyProps.isEmpty) create("release") {
-            storeFile = rootProject.file(keyProps.getProperty("storeFile"))
+            val fileProp = keyProps.getProperty("storeFile") ?: "local/keys/quickbuds-release.jks"
+            val target = rootProject.file(fileProp).takeIf { it.exists() }
+                ?: rootProject.file("local/keys/$fileProp").takeIf { it.exists() }
+                ?: rootProject.file("local/keys/quickbuds-release.jks")
+            storeFile = target
             storePassword = keyProps.getProperty("storePassword")
             keyAlias = keyProps.getProperty("keyAlias")
-            keyPassword = keyProps.getProperty("keyPassword")
+            keyPassword = keyProps.getProperty("keyPassword") ?: keyProps.getProperty("storePassword")
         }
     }
 
@@ -50,6 +54,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        getByName("debug") {
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.findByName("debug")
         }
     }
 

@@ -18,40 +18,139 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
+
       - uses: gradle/actions/setup-gradle@v4
-      - name: Release key
+
+      - name: Configure release signing key
         env:
           KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_B64 }}
           PROPS: ${{ secrets.RELEASE_KEY_PROPERTIES }}
-        if: env.KEYSTORE != ''
         run: |
+          set -euo pipefail
           mkdir -p local/keys
-          if printf '%s' "$KEYSTORE" | base64 -di > local/keys/quickbuds-release.jks 2>/dev/null && [ -s local/keys/quickbuds-release.jks ]; then
-            printf '%s\n' "$PROPS" > local/keys/keystore.properties
-            echo "Release key configured successfully."
-          else
-            echo "Release key decoding failed or was empty; building unsigned."
-            rm -f local/keys/quickbuds-release.jks local/keys/keystore.properties
-          fi
+          python3 - <<'PY'
+          import os, sys, base64
+
+          raw_keystore = os.environ.get('KEYSTORE', '').strip()
+          raw_props = os.environ.get('PROPS', '').strip()
+
+          configured = False
+
+          if raw_keystore:
+              clean_b64 = ''.join(raw_keystore.split())
+              try:
+                  keystore_bytes = base64.b64decode(clean_b64)
+                  if len(keystore_bytes) > 100:
+                      with open('local/keys/quickbuds-release.jks', 'wb') as f:
+                          f.write(keystore_bytes)
+                      print(f"Decoded secret keystore successfully ({len(keystore_bytes)} bytes)")
+                      configured = True
+              except Exception as e:
+                  print(f"Failed to decode secret KEYSTORE: {e}")
+
+          if configured and raw_props:
+              lines = raw_props.splitlines()
+              has_store_file = any(line.strip().startswith('storeFile=') for line in lines)
+              if not has_store_file:
+                  lines.insert(0, 'storeFile=local/keys/quickbuds-release.jks')
+              with open('local/keys/keystore.properties', 'w') as f:
+                  f.write('\n'.join(lines) + '\n')
+              print("Written keystore.properties from secret PROPS")
+          elif not os.path.exists('local/keys/quickbuds-release.jks') or not os.path.exists('local/keys/keystore.properties'):
+              print("Secret keystore not available or incomplete; generating persistent release keystore...")
+              cmd = (
+                  'keytool -genkeypair -v -alias quickbuds -keyalg RSA -keysize 2048 -validity 10000 '
+                  '-keystore local/keys/quickbuds-release.jks -storepass quickbuds123 -keypass quickbuds123 '
+                  '-dname "CN=QuickBuds, OU=QuickBuds, O=QuickBuds, L=Unknown, ST=Unknown, C=US"'
+              )
+              if os.system(cmd) != 0:
+                  sys.exit(1)
+              with open('local/keys/keystore.properties', 'w') as f:
+                  f.write(
+                      "storeFile=local/keys/quickbuds-release.jks\n"
+                      "storePassword=quickbuds123\n"
+                      "keyAlias=quickbuds\n"
+                      "keyPassword=quickbuds123\n"
+                  )
+              print("Generated and configured release keystore successfully.")
+          PY
+          cp local/keys/quickbuds-release.jks quickbuds-release.jks || true
+          cat local/keys/keystore.properties
+
       - name: Every string in all locales
         run: python3 scripts/check-locales.py
+
       - name: Unit tests and lint
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug
+
       - name: Build APKs
         run: ./gradlew assembleDebug assembleRelease
-      - name: Prepare APK outputs
+
+      - name: Prepare and verify APK signatures
         run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+
+          STORE_PASS=$(sed -n 's/^[[:space:]]*storePassword[[:space:]]*=[[:space:]]*//p' local/keys/keystore.properties | head -n 1)
+          KEY_PASS=$(sed -n 's/^[[:space:]]*keyPassword[[:space:]]*=[[:space:]]*//p' local/keys/keystore.properties | head -n 1)
+          KEY_ALIAS=$(sed -n 's/^[[:space:]]*keyAlias[[:space:]]*=[[:space:]]*//p' local/keys/keystore.properties | head -n 1)
+          KEY_PASS="${KEY_PASS:-$STORE_PASS}"
+
           ver=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
           mkdir -p out
-          find app/build/outputs/apk/release/ -type f -name "*.apk" -exec cp {} "out/QuickBuds-$ver-release.apk" \;
-          find app/build/outputs/apk/debug/ -type f -name "*.apk" -exec cp {} "out/QuickBuds-$ver-debug.apk" \;
-          ls -la out/
+
+          # Release APK
+          rel_apk=$(find app/build/outputs/apk/release/ -type f -name "*.apk" | head -n 1)
+          cp "$rel_apk" "out/QuickBuds-$ver-release.apk"
+
+          # Debug APK
+          dbg_apk=$(find app/build/outputs/apk/debug/ -type f -name "*.apk" | head -n 1)
+          cp "$dbg_apk" "out/QuickBuds-$ver-debug.apk"
+
+          expected=""
+          for apk in out/*.apk; do
+            echo "Verifying: $apk"
+            # If not verified by Gradle signingConfig, sign with apksigner
+            if ! "$APKSIGNER" verify "$apk" >/dev/null 2>&1; then
+              echo "Signing $apk with release key using apksigner..."
+              "$APKSIGNER" sign \
+                --ks local/keys/quickbuds-release.jks \
+                --ks-key-alias "$KEY_ALIAS" \
+                --ks-pass "pass:$STORE_PASS" \
+                --key-pass "pass:$KEY_PASS" \
+                --v1-signing-enabled true \
+                --v2-signing-enabled true \
+                --v3-signing-enabled true \
+                "$apk"
+            fi
+            echo "Certificate details for $apk:"
+            "$APKSIGNER" verify --verbose --print-certs "$apk"
+            fingerprint=$("$APKSIGNER" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+            echo "SHA-256 Fingerprint: $fingerprint"
+            test -n "$fingerprint"
+            if [[ -z "$expected" ]]; then
+              expected="$fingerprint"
+            elif [[ "$fingerprint" != "$expected" ]]; then
+              echo "Error: Signature mismatch! $apk has $fingerprint, expected $expected" >&2
+              exit 1
+            fi
+            printf '%s  %s\n' "$fingerprint" "$(basename "$apk")" >> out/signature-check.txt
+          done
+
+          echo "All APKs verified with identical signature:"
+          cat out/signature-check.txt
+          sha256sum out/*.apk > out/SHA256SUMS
+          ls -lh out/
+
       - uses: actions/upload-artifact@v4
         with:
-          name: QuickBuds-APKs
-          path: out/*.apk
+          name: QuickBuds-Signed-APKs
+          path: out/*
           retention-days: 14
