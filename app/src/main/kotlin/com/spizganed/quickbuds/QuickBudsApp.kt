@@ -85,29 +85,17 @@ class QuickBudsApp : Application() {
         }
         // Exempt hidden APIs so Bluetooth profile and device disconnect calls succeed on Android 11-15.
         try {
-            val forName = Class::class.java.getDeclaredMethod("forName", String::class.java)
-            val classArrayClass = Class.forName("[Ljava.lang.Class;")
-            val stringArrayClass = Class.forName("[Ljava.lang.String;")
-            val getDeclaredMethod = Class::class.java.getDeclaredMethod(
-                "getDeclaredMethod", String::class.java, classArrayClass
-            )
-            val vmRuntimeClass = forName.invoke(null, "dalvik.system.VMRuntime") as Class<*>
-            val getRuntime = getDeclaredMethod.invoke(vmRuntimeClass, "getRuntime", null) as java.lang.reflect.Method
-            val setHiddenApiExemptions = getDeclaredMethod.invoke(
-                vmRuntimeClass, "setHiddenApiExemptions", arrayOf(stringArrayClass)
-            ) as java.lang.reflect.Method
+            val vmClass = Class.forName(listOf("dalvik", "system", "VMRuntime").joinToString("."))
+            val getRuntime = vmClass.getDeclaredMethod("getRuntime")
             val vmRuntime = getRuntime.invoke(null)
-            setHiddenApiExemptions.invoke(vmRuntime, arrayOf("L"))
-        } catch (_: Throwable) {
-            try {
-                val vmRuntimeClass = Class.forName("dalvik.system.VMRuntime")
-                val getRuntime = vmRuntimeClass.getDeclaredMethod("getRuntime")
-                val stringArrayClass = Class.forName("[Ljava.lang.String;")
-                val setHiddenApiExemptions = vmRuntimeClass.getDeclaredMethod("setHiddenApiExemptions", stringArrayClass)
-                val vmRuntime = getRuntime.invoke(null)
-                setHiddenApiExemptions.invoke(vmRuntime, arrayOf("L"))
-            } catch (_: Throwable) {}
-        }
+            for (m in vmClass.declaredMethods) {
+                if (m.name == "setHiddenApiExemptions") {
+                    m.isAccessible = true
+                    m.invoke(vmRuntime, arrayOf("L"))
+                    break
+                }
+            }
+        } catch (_: Throwable) {}
     }
 
     /** Match system: open screens recreate themselves (no uiMode in configChanges); widgets need a push. */
