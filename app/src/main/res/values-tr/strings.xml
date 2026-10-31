@@ -569,4 +569,11 @@
     <string name="connect_held_by_other">Kulaklıkları başka bir cihaz veya uygulama kullanıyor. Orada bağlantıyı kesin veya uygulamayı kapatın, sonra Bağlan düğmesine dokunun.</string>
     <string name="tray_open">QuickBuds\'ı aç</string>
     <string name="tray_quit">Çık</string>
+    <string name="eq_bass_boost_plus">Bass Boost+</string>
+    <string name="eq_bright">Parlak</string>
+    <string name="row_volume_enhancer_title">Ses yükseltici</string>
+    <string name="row_volume_enhancer_sub">Kulaklıkların sesini artırır</string>
+    <string name="widget_tap_opens_title">Dokunmak QuickBuds\'ı açar</string>
+    <string name="widget_tap_opens_sub">Widget\'a dokunmak uygulamayı açar</string>
+    <string name="widget_open_app">QuickBuds\'ı aç</string>
 </resources>

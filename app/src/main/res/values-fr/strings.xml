@@ -569,4 +569,11 @@
     <string name="connect_held_by_other">Un autre appareil ou une autre appli utilise les écouteurs. Déconnectez-les là-bas ou fermez l\'appli, puis touchez Connecter.</string>
     <string name="tray_open">Ouvrir QuickBuds</string>
     <string name="tray_quit">Quitter</string>
+    <string name="eq_bass_boost_plus">Bass Boost+</string>
+    <string name="eq_bright">Brillant</string>
+    <string name="row_volume_enhancer_title">Amplificateur de volume</string>
+    <string name="row_volume_enhancer_sub">Augmente le volume des écouteurs</string>
+    <string name="widget_tap_opens_title">Un appui ouvre QuickBuds</string>
+    <string name="widget_tap_opens_sub">Un appui sur le widget ouvre l\'application</string>
+    <string name="widget_open_app">Ouvrir QuickBuds</string>
 </resources>

@@ -569,4 +569,11 @@
     <string name="connect_held_by_other">다른 기기나 앱이 이어버드를 사용 중입니다. 그쪽에서 연결을 끊거나 앱을 닫은 다음 연결을 탭하세요.</string>
     <string name="tray_open">QuickBuds 열기</string>
     <string name="tray_quit">종료</string>
+    <string name="eq_bass_boost_plus">Bass Boost+</string>
+    <string name="eq_bright">브라이트</string>
+    <string name="row_volume_enhancer_title">볼륨 강화</string>
+    <string name="row_volume_enhancer_sub">이어버드 음량을 높입니다</string>
+    <string name="widget_tap_opens_title">탭하면 QuickBuds 열기</string>
+    <string name="widget_tap_opens_sub">위젯을 탭하면 앱이 열립니다</string>
+    <string name="widget_open_app">QuickBuds 열기</string>
 </resources>
