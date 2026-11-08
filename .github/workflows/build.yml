@@ -1,14 +1,5 @@
-<<<<<<< HEAD
 name: Build APK
-=======
-# Checks the locales, runs the Android unit tests and lint, builds the release APK and AAB, runs the core and desktop
-# tests and builds the desktop files (scripts/desktop-dist.sh). Runs only by hand (`gh workflow run Build`, or the
-# Actions tab), never on a push or a pull request. On the PC,
-# scripts/release-build.sh builds the same release files, much faster (docs/CONTRIBUTING.md). The APK is signed
-# when the repository has the RELEASE_KEYSTORE_B64 and RELEASE_KEY_PROPERTIES secrets, so it installs over the
-# release app. The run's Artifacts hold every release file.
-name: Build
->>>>>>> upstream/main
+
 
 permissions:
   contents: write
