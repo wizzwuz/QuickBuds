@@ -742,22 +742,9 @@ class BudsConnectionManager(private val context: Context) {
 
     fun refreshDevices() = sendRaw(Commands.queryDevices(), "query devices")
 
-    /** Connects or disconnects another device on the list; refresh after disconnect completes. */
-    fun connectDevice(mac: String, on: Boolean) {
-        if (on) {
-            sendRaw(Commands.connectDevice(mac, true), "Connect $mac")
-            return
-        }
-        Thread {
-            try {
-                sendRawBlocking(Commands.connectDevice(mac, false), "Disconnect $mac")
-                Thread.sleep(700)
-                sendRawBlocking(Commands.queryDevices(), "refresh devices after disconnect $mac")
-            } catch (e: Exception) {
-                log("DISCONNECT $mac failed: ${e.message}")
-            }
-        }.start()
-    }
+    /** Connects or disconnects another device on the list; the buds push the new list. */
+    fun connectDevice(mac: String, on: Boolean) =
+        sendRaw(Commands.connectDevice(mac, on),"${if (on) "Connect" else "Disconnect"} $mac")
 
     fun setPreferred(mac: String?) {
         Thread {
