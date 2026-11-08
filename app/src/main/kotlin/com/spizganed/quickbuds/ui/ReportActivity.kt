@@ -103,6 +103,19 @@ class ReportActivity : Activity() {
             SettingRowFactory.addRow(card, SettingRowFactory.build(this, 0, label, 0, sw) { sw.performClick() })
         }
         root.addView(card)
+        root.addView(note(R.string.problem_capture_hint, p.textSecondary))
+        root.addView(note(R.string.capture_ask_open, p.accent).apply {
+            append(" ›")
+            setOnClickListener {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CaptureAsk.ISSUE_URL))) }
+            }
+        })
+        root.addView(note(R.string.problem_capture_link, p.accent).apply {
+            append(" ›")
+            setOnClickListener {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CAPTURE_URL))) }
+            }
+        })
         crash = intent.getStringExtra(EXTRA_CRASH)
         noFrames = crash == null && PacketLogger.getFileContent().lines().none { it.contains("  RX") }
         if (crash != null) categories.getValue("Other").isChecked = true
@@ -202,7 +215,9 @@ class ReportActivity : Activity() {
                 paintSend()
                 val text = if (ok) getString(R.string.problem_sent) else refused ?: getString(R.string.problem_failed)
                 Toast.makeText(this, text, Toast.LENGTH_LONG).show()
-                if (ok) finish()
+                // A broken or missing feature needs a snoop log in a GitHub issue.
+                if (ok && categories["Feature not working"]?.isChecked == true) CaptureAsk.show(this) { finish() }
+                else if (ok) finish()
             }
         }.start()
     }
@@ -210,6 +225,10 @@ class ReportActivity : Activity() {
     companion object {
         /** The crash report text, from MainActivity's crash dialog. */
         const val EXTRA_CRASH = "crash"
+
+        /** The guide for a snoop log of the vendor app, for a missing or broken feature. */
+        private const val CAPTURE_URL = AboutActivity.GITHUB_URL +
+            "/blob/main/docs/PACKET-CAPTURE.md#send-a-snoop-log-for-a-missing-feature"
 
         /** Labels for [ProblemReport.CATEGORIES], same order. */
         private val CATEGORY_LABELS = listOf(R.string.problem_cat_ui, R.string.problem_cat_lag, R.string.problem_cat_connection,

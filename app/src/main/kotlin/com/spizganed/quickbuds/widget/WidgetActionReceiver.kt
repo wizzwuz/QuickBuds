@@ -11,7 +11,6 @@ import com.spizganed.quickbuds.bluetooth.BudsService
 import com.spizganed.quickbuds.bluetooth.WidgetActions
 import com.spizganed.quickbuds.protocol.AncModes
 import com.spizganed.quickbuds.ui.Haptics
-import com.spizganed.quickbuds.ui.MainActivity
 
 class WidgetActionReceiver : BroadcastReceiver() {
 
@@ -45,12 +44,15 @@ class WidgetActionReceiver : BroadcastReceiver() {
             WidgetActions.ACTION_QUICK -> {
                 val target = intent.getStringExtra(WidgetActions.EXTRA_ANC_TARGET) ?: return
                 if (target == "anc") return openList(context, widgetId)
+                val current = WidgetSettings.modeOf(state.ancMode)
                 // The lit mode's button turns noise control off; the send is a list pick's.
-                val pick = if (WidgetSettings.modeOf(state.ancMode).key == target) "off" else target
+                val pick = if (target == "cycle") WidgetSettings.cycleNext(context, current, widgetId)
+                    else if (current.key == target) "off" else target
                 return handle(context, Intent(context, WidgetActionReceiver::class.java)
                     .setAction(WidgetActions.ACTION_ANC_SELECT)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-                    .putExtra(WidgetActions.EXTRA_ANC_TARGET, pick))
+                    .putExtra(WidgetActions.EXTRA_ANC_TARGET, pick)
+                    .putExtra(WidgetActions.EXTRA_CYCLE, target == "cycle"))
             }
             WidgetActions.ACTION_ANC_SELECT -> {
                 val target = intent.getStringExtra(WidgetActions.EXTRA_ANC_TARGET) ?: return
@@ -69,7 +71,9 @@ class WidgetActionReceiver : BroadcastReceiver() {
                 }
                 sendAncMode = state.ancMode
                 // After a strength pick the widget goes back to its first screen, in every style.
-                if (target in setOf("low", "med", "high", "smart") && widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                // The cycle button stays on the controls page.
+                if (target in setOf("low", "med", "high", "smart") && !intent.getBooleanExtra(WidgetActions.EXTRA_CYCLE, false) &&
+                    widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     WidgetSettings.setPage(context, widgetId, null)
                 }
             }

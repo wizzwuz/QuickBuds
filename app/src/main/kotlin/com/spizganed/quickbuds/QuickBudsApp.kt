@@ -77,12 +77,6 @@ class QuickBudsApp : Application() {
             // Hand back to the platform so the normal "app has stopped" flow runs.
             previous?.uncaughtException(thread, throwable)
         }
-        // Dev Tools' "Crash test": one throw at launch, cleared first so it never loops.
-        val prefs = base.getSharedPreferences(ThemeRes.PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(PREF_CRASH_ON_LAUNCH, false)) {
-            prefs.edit().remove(PREF_CRASH_ON_LAUNCH).commit()
-            throw RuntimeException("Crash test from Dev Tools (crash logger check)")
-        }
         // Exempt hidden APIs so Bluetooth profile and device disconnect calls succeed on Android 11-15.
         try {
             val vmClass = Class.forName(listOf("dalvik", "system", "VMRuntime").joinToString("."))
@@ -222,9 +216,6 @@ class QuickBudsApp : Application() {
     companion object {
         /** Subfolder of Download holding crash reports (and the Dev Tools log exports). */
         const val PUBLIC_DIR = "QuickBuds"
-
-        /** Dev Tools' "Crash test" arms this; the next launch throws once in attachBaseContext. */
-        const val PREF_CRASH_ON_LAUNCH = "devCrashOnLaunch"
     }
 }
 

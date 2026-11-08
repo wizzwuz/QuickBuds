@@ -104,7 +104,8 @@ class EarbudSettingsActivity : Activity(), BudsConnectionManager.Listener {
                 manager?.featureStates?.get(Feature.AUTO_PLAY_PAUSE)).also { it.show() }
         }
         sheetRow(R.drawable.ic_find_buds, R.string.row_find_title, R.string.row_find_sub,
-            Capabilities.supports(this, OpoProtocol.CMD_FIND_BUDS)) {
+            Capabilities.supports(this, OpoProtocol.CMD_FIND_BUDS) &&
+            ModelCatalog.current(this)?.json?.optInt("noFind") != 1) {
             FindBudsSheet(this) { on ->
                 startService(Intent(this, BudsService::class.java).setAction(BudsService.ACTION_FIND_BUDS)
                     .putExtra(BudsService.EXTRA_FIND_ON, on))
@@ -230,6 +231,19 @@ class EarbudSettingsActivity : Activity(), BudsConnectionManager.Listener {
         }
         syncSwitch(Feature.SMART_VOLUME, "autoVolume", R.drawable.ic_volume,
             R.string.row_smart_volume_title, R.string.row_smart_volume_sub)
+        // Write-only: the buds do not report it, so the last tap is remembered (realme Buds T01, report 25).
+        if (ModelCatalog.current(this)?.json?.optInt("volumeEnhancer") == 1) {
+            val prefs = getSharedPreferences(ThemeRes.PREFS_NAME, Context.MODE_PRIVATE)
+            val sw = SettingRowFactory.buildSwitch(this, prefs.getBoolean("volumeEnhancer", true))
+            sw.setOnCheckedChangeListener { _, on ->
+                if (syncing) return@setOnCheckedChangeListener
+                prefs.edit().putBoolean("volumeEnhancer", on).apply()
+                manager?.setVolumeEnhancer(on)
+            }
+            if (card.childCount > 0) card.addView(SettingRowFactory.buildDivider(this))
+            card.addView(SettingRowFactory.build(this, R.drawable.ic_volume, R.string.row_volume_enhancer_title,
+                R.string.row_volume_enhancer_sub, sw) { sw.performClick() })
+        }
         syncSwitch(Feature.ADAPTIVE_VOLUME, null, R.drawable.ic_volume,
             R.string.row_adaptive_volume_title, R.string.row_adaptive_volume_sub)
         syncSwitch(Feature.ADAPTIVE_EAR, null, R.drawable.ic_earbud,

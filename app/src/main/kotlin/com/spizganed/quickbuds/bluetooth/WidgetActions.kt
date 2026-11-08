@@ -18,6 +18,8 @@ object WidgetActions {
     const val ACTION_OPEN_APP   = "com.spizganed.quickbuds.action.OPEN_APP"
 
     const val EXTRA_ANC_TARGET = "anc_target"
+    /** True on a pick from the "cycle" button: the widget keeps the controls page. */
+    const val EXTRA_CYCLE = "cycle"
     /**
      * The 2x2 page to switch to. It marks a double-tap
      * wrapped tap: the receiver waits for a second tap before running the action.
