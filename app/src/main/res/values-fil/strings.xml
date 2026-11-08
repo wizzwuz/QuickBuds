@@ -4,6 +4,11 @@
     <string name="action_dev_tools">Mga tool ng developer</string>
     <string name="desktop_nav_overview">Pangkalahatang-ideya</string>
     <string name="desktop_nav_app_settings">Mga setting ng app</string>
+    <string name="desktop_autostart_title">Magsimula kasama ng computer</string>
+    <string name="desktop_autostart_sub">Magbubukas sa tray kapag nag-sign in ka</string>
+    <string name="desktop_devtools_sub">Ipakita ang mga dev tool sa menu sa kaliwa</string>
+    <string name="desktop_copy_log">Kopyahin ang log</string>
+    <string name="desktop_dual_empty">Magkonekta ng device para lumabas dito</string>
     <string name="action_settings">Mga Setting</string>
     <string name="conn_on">Nakakonekta</string>
     <string name="conn_off">Hindi nakakonekta</string>
@@ -268,6 +273,12 @@
     <string name="settings_haptics_sub">Mag-vibrate kapag nagbago ang isang setting</string>
     <string name="settings_clear_battery_title">Itago ang lumang antas ng baterya</string>
     <string name="settings_clear_battery_sub">Burahin ang antas na hindi na iniuulat ng buds, gaya ng case pagkasara ng takip</string>
+    <string name="settings_full_notif_title">Baterya sa notification</string>
+    <string name="settings_full_notif_sub">Ipinapakita ang mga level. Off: maliit na notification na walang icon sa status bar</string>
+    <string name="settings_live_chip_title">Chip sa status bar</string>
+    <string name="settings_live_chip_sub">Ipinapakita sa status bar ang antas ng mga earbud na suot mo. Kailangan ng Android 16. Naka-off: mga singsing ng baterya sa notification</string>
+    <string name="settings_lock_notif_title">I-lock ang notification</string>
+    <string name="settings_lock_notif_sub">Hindi maaalis ang notification sa pag-swipe. Naka-off: maaalis ito sa pag-swipe</string>
     <string name="settings_background_title">Background service</string>
     <string name="settings_background_sub">Manatiling nakakonekta kahit sarado ang app</string>
     <string name="settings_background_warn_title">I-off ang background service?</string>
@@ -275,10 +286,6 @@
     <string name="settings_background_warn_action">I-off</string>
     <string name="settings_devtools_title">Button ng mga tool ng developer</string>
     <string name="settings_devtools_sub">Ipakita ang mga tool ng developer sa header</string>
-    <string name="virtual_buds">Virtual na earbuds</string>
-    <string name="virtual_buds_sub">Kumonekta sa pekeng server ng earbuds sa halip na Bluetooth. Para sa development lang.</string>
-    <string name="virtual_buds_address">Host at port</string>
-    <string name="virtual_buds_name">Ipinapakitang pangalan</string>
     <string name="settings_update_sub">Naka-install ang %1$s</string>
     <string name="settings_about_title">Tungkol dito</string>
     <string name="settings_about_sub">Bersyon, mga lisensya, GitHub</string>
@@ -347,6 +354,7 @@
     <string name="widget_mode_anc_smart">ANC Smart</string>
     <string name="widget_low_latency">Low latency</string>
     <string name="widget_battery_name">QuickBuds baterya</string>
+    <string name="widget_strip_name">Strip ng baterya ng QuickBuds</string>
     <string name="settings_language_title">Wika</string>
     <string name="settings_language_sub">Wika ng app</string>
     <string name="language_system">Default ng system</string>
@@ -460,6 +468,11 @@
     <string name="problem_unsupported">Sinusuportahan lang ng QuickBuds ang earbuds ng OnePlus, OPPO at realme. Piliin ang iyong modelo mula sa listahan.</string>
     <string name="problem_supported_list">Tingnan ang lahat ng suportadong earbuds</string>
     <string name="problem_log_empty">Walang laman ang log: hindi pa nakakonekta ang iyong earbuds. Ikonekta muna ang earbuds, saka ipadala ang feedback.</string>
+    <string name="problem_capture_hint">May feature na hindi gumagana o wala? Hindi sapat ang log ng app. Magbukas ng GitHub issue na may Bluetooth snoop log ng HeyMelody o realme Link at screen recording.</string>
+    <string name="problem_capture_link">Paano gumawa ng snoop log</string>
+    <string name="capture_ask_title">Tumulong ayusin ang feature na ito</string>
+    <string name="capture_ask_body">Hindi sapat ang log ng app para ayusin ang feature na hindi gumagana o wala. Magbukas ng GitHub issue na may Bluetooth snoop log ng HeyMelody o realme Link at screen recording ng app na iyon. Nasa issue form ang mga hakbang.</string>
+    <string name="capture_ask_open">Magbukas ng GitHub issue</string>
     <string name="test_title">Subukan ang aking earbuds</string>
     <string name="test_sub">Subukan ang bawat feature at ipadala ang resulta</string>
     <string name="test_ask_body">Hindi pa kumpirmado ang QuickBuds sa earbuds na ito. Ipinapakita ng maikling test kung ano ang gumagana. Walang ipapadala hangga\'t hindi mo pinipindot ang Ipadala.</string>
@@ -576,4 +589,19 @@
     <string name="widget_tap_opens_title">Pagtap ay magbubukas ng QuickBuds</string>
     <string name="widget_tap_opens_sub">Ang pagtap sa widget ay magbubukas ng app</string>
     <string name="widget_open_app">Buksan ang QuickBuds</string>
+    <string name="widget_cycle">Ikot ng ingay</string>
+    <string name="tile_on">On</string>
+    <string name="tile_off">Off</string>
+    <string name="cycle_intro">Pumili ng hindi bababa sa 2 mode. Ang tap sa tile o sa button ng Ikot ng ingay ay lilipat sa susunod na mode, sa ayos na ito.</string>
+    <string name="settings_cycle_sub">Mga mode para sa tile at sa button ng widget</string>
+    <string name="settings_tile_title">Tile ng Quick Settings</string>
+    <string name="widget_cycle_name">QuickBuds ikot ng ingay</string>
+    <string name="support_kofi_title">Nagugustuhan mo ba ang QuickBuds?</string>
+    <string name="support_kofi_body">Libre ang QuickBuds at isang tao ang gumawa nito. Kung nakakatulong ito sa iyo, ang maliit na tip sa Ko-fi ay nagpapatuloy dito.</string>
+    <string name="support_kofi_action">Suportahan sa Ko-fi</string>
+    <string name="support_github_title">Nagugustuhan mo ba ang QuickBuds?</string>
+    <string name="support_github_body">Ang star sa GitHub ay tumutulong sa ibang may earbuds na mahanap ang app.</string>
+    <string name="support_github_action">Mag-star sa GitHub</string>
+    <string name="support_later">Mamaya</string>
+    <string name="support_never">Huwag nang magtanong</string>
 </resources>

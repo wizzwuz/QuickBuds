@@ -55,6 +55,11 @@ class BudsService : Service(), BudsConnectionManager.Listener {
 
     private val widgetCommandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == ACTION_NOTIF_DISMISSED) {
+                // Android 14+ lets the user swipe away an ongoing service notification. With the lock on, post it again (issue 36).
+                if (lockNotification()) { shownLevels = null; updateNotification() }
+                return
+            }
             if (intent.action != ACTION_WIDGET_COMMAND) return
             statusLog("<< WIDGET broadcast")
             executeWidgetCommand(intent)
@@ -66,6 +71,47 @@ class BudsService : Service(), BudsConnectionManager.Listener {
      * the user unlocks. Smart auto-pause keeps it awake, because that needs the wear events.
      */
     @Volatile private var asleep = false
+
+    /** Activities bound to this service. While one is open the service stays. */
+    @Volatile private var bindCount = 0
+
+    private fun bluetoothOff() =
+        getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.isEnabled != true
+
+    /**
+     * The notification belongs to a connection. With nothing connected, nothing connecting and no screen open, the
+     * service stops and its notification goes: when Bluetooth is off at once, else after [IDLE_MS]. The buds' audio
+     * link and the widgets start it again (KeepAliveReceiver, WidgetActionReceiver).
+     */
+    private val idleCheck = Runnable {
+        val m = manager
+        when {
+            bindCount > 0 || m == null -> Unit
+            m.isConnected() -> Unit
+            !m.isIdle() -> scheduleIdleCheck(IDLE_MS)
+            // A locked phone sleeps the link on purpose; the unlock wakes it. Only a Bluetooth that is off ends that.
+            asleep && !bluetoothOff() -> Unit
+            else -> park()
+        }
+    }
+
+    private fun scheduleIdleCheck(delayMs: Long) {
+        handler.removeCallbacks(idleCheck)
+        handler.postDelayed(idleCheck, delayMs)
+    }
+
+    private fun park() {
+        statusLog("[SVC] Park: nothing connected (bluetooth off=${bluetoothOff()})")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val state = intent.getIntExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE, -1)
+            if (state == android.bluetooth.BluetoothAdapter.STATE_OFF || state == android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF) scheduleIdleCheck(BT_OFF_MS)
+        }
+    }
 
     private fun shouldSleep(): Boolean {
         val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked ||
@@ -92,6 +138,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         // Start the poll again only when game EQ is on; the link comes up after this call.
         gameEq.update()
         if (backgroundAllowed(this)) forceConnect(false)
+        scheduleIdleCheck(IDLE_MS)
     }
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -116,7 +163,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
 
         manager = BudsConnectionManager(this).also { it.addListener(this) }
 
-        val filter = IntentFilter(ACTION_WIDGET_COMMAND)
+        val filter = IntentFilter(ACTION_WIDGET_COMMAND).apply { addAction(ACTION_NOTIF_DISMISSED) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(widgetCommandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -128,12 +175,20 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenReceiver, screen)
+        registerReceiver(bluetoothStateReceiver, IntentFilter(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED))
+        scheduleIdleCheck(if (bluetoothOff()) BT_OFF_MS else IDLE_MS)
+        getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefListener)
         // Started by a Bluetooth event while locked: stay asleep until the unlock.
         if (backgroundAllowed(this) && shouldSleep()) asleep = true
+        // A new service has no link. A connected state from an earlier process is stale (report 158); the sleep keeps it on purpose.
+        else if (WidgetStateStore.read(this).connected) onConnected(false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         statusLog("[SVC] onStartCommand action=${intent?.action}")
+        // Android 12+ kills the app when a startForegroundService() call gets no startForeground() within 5 s. onCreate does
+        // it once; a start of a running service needs it again (report 165). A repeat only reposts the notification.
+        if (intent != null) startForegroundService()
 
         when (intent?.action) {
             ACTION_FORCE_CONNECT -> {
@@ -163,7 +218,6 @@ class BudsService : Service(), BudsConnectionManager.Listener {
                 // disconnect() also runs after a failed connect attempt.
                 BudsDevice.find(this)?.let { manager?.setPhoneAudio(it, on = false) }
             }
-            ACTION_TOGGLE_BRIDGE -> manager?.setBridge(!RfcommBridge.running)
             ACTION_TILE_SET_ANC -> {
                 val mode = intent.getStringExtra(EXTRA_TILE_ANC_MODE)
                 if (mode == null) {
@@ -265,6 +319,8 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             }
             else -> statusLog("[SVC] onStartCommand (no action)")
         }
+        // Whatever started us (a connect, a widget), the link gets [IDLE_MS] to come up.
+        scheduleIdleCheck(IDLE_MS)
         return START_STICKY
     }
 
@@ -280,30 +336,19 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             return
         }
         // An automatic connect needs the live audio link. With the buds in the closed case the
-        // A2DP / HEADSET state is disconnected, and 5 socket tries would only fail. Virtual buds
-        // keep their own path, and an unknown state connects as before.
+        // A2DP / HEADSET state is disconnected, and 5 socket tries would only fail. An unknown state connects as before.
         if (!user && !fromLink) {
-            val virtual = VirtualBuds.on(this)
-            val device = if (virtual) null else try { BudsDevice.find(this) } catch (_: Exception) { null }
+            val device = try { BudsDevice.find(this) } catch (_: Exception) { null }
             val link = device?.let { manager?.audioLinkState(it) } ?: LinkState.UNKNOWN
-            if (!ConnectPolicy.autoConnectAllowed(link, virtual)) {
+            if (!ConnectPolicy.autoConnectAllowed(link)) {
                 statusLog("[SVC] FORCE_CONNECT skipped (the buds have no audio link)")
+                // The sleep kept the connected state and the last levels. The buds left during the lock: clear them (reports 134, 135).
+                if (WidgetStateStore.read(this).connected) onConnected(false)
                 return
             }
         }
         statusLog("[SVC] FORCE_CONNECT: connecting...")
         AncWidgetProvider.setConnecting(this, true)
-        // Dev tools › Virtual buds: no paired device and no Bluetooth adapter is needed.
-        if (VirtualBuds.on(this)) {
-            val target = VirtualBuds.parseAddress(VirtualBuds.address(this))
-            if (target == null) {
-                statusLog("[SVC] Virtual buds: bad host:port '${VirtualBuds.address(this)}'")
-                AncWidgetProvider.setConnecting(this, false)
-                return
-            }
-            manager?.connectVirtual(target.first, target.second, VirtualBuds.name(this))
-            return
-        }
         try {
             val device = BudsDevice.find(this)
             if (device != null) manager?.connect(device, withAudio, user)
@@ -346,41 +391,135 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         }
     }
 
-    private fun startForegroundService() {
-        val channelId = "QuickBuds_Service"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Buds Connection",
-                NotificationManager.IMPORTANCE_MIN
-            ).apply {
-                setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
-                setSound(null, null)
-                description = "Keeps the connection to your earbuds alive"
-            }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
+    /** True for 1 s after a disconnect: the chip shows "– –" before it goes. */
+    private var goodbye = false
 
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("QuickBuds")
-                .setContentText("Maintaining connection to earbuds")
-                .setSmallIcon(R.drawable.ic_stat_buds)
-                .setOngoing(false)
-                .setShowWhen(false)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("QuickBuds")
-                .setContentText("Maintaining connection to earbuds")
-                .setSmallIcon(R.drawable.ic_stat_buds)
-                .setOngoing(false)
-                .setShowWhen(false)
-                .build()
+    /** True when the last posted notification has the levels chip. */
+    private var chipShown = false
+
+    /** The RFCOMM link is open. The sleep keeps the connected state with no link: the chip must not show those old levels. */
+    private fun linkUp() = manager?.isConnected() == true
+
+    /** The last levels the notification shows, so an unchanged battery event does not repost it. */
+    private var shownLevels: String? = null
+
+    /**
+     * The service notification. A tap opens the app (issue 26). Connected with a level: the battery rings,
+     * drawn like the widget's. Else the plain text.
+     */
+    private fun buildNotification(): Notification {
+        val open = android.app.PendingIntent.getActivity(this, 0,
+            Intent(this, com.spizganed.quickbuds.ui.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        val full = fullNotification()
+        val b = Notification.Builder(this, if (full) CHANNEL_FULL_ID else CHANNEL_ID)
+            .setContentTitle("QuickBuds")
+            .setContentText("Maintaining connection to earbuds")
+            .setSmallIcon(R.drawable.ic_stat_buds)
+            .setContentIntent(open)
+            .setOngoing(lockNotification())
+            .setDeleteIntent(android.app.PendingIntent.getBroadcast(this, 1,
+                Intent(ACTION_NOTIF_DISMISSED).setPackage(packageName), android.app.PendingIntent.FLAG_IMMUTABLE))
+            .setShowWhen(false)
+        val st = WidgetStateStore.read(this)
+        val levels = intArrayOf(st.leftBattery, st.caseBattery, st.rightBattery)
+        val known = levels.any { it >= 0 }
+        chipShown = false
+        if (android.os.Build.VERSION.SDK_INT >= 36 && liveChip() && (goodbye || (st.connected && linkUp()))) {
+            // Live update (Android 16+): a promoted notification needs a standard style, so no rings. The chip shows chipText.
+            // "– –" while the levels are not read yet (connect) and for 1 s after a disconnect.
+            if (known && !goodbye) {
+                val names = intArrayOf(R.string.status_left, R.string.status_case, R.string.status_right)
+                val text = (0..2).filter { levels[it] >= 0 }.joinToString("  ") { "${getString(names[it])} ${levels[it]}%" }
+                b.setStyle(Notification.BigTextStyle().bigText(text)).setContentText(text)
+            }
+            b.setOngoing(true)
+            val chip = if (known && !goodbye) chipText(st) else "– –"
+            if (chip != null) {
+                chipShown = !goodbye
+                b.setShortCriticalText(chip)
+                // Notification.Builder.setRequestPromotedOngoing is missing on Android 16.0; the extra is the same flag.
+                b.extras.putBoolean("android.requestPromotedOngoing", true)
+            }
+        } else if (full && st.connected && levels.any { it >= 0 }) {
+            val v = android.widget.RemoteViews(packageName, R.layout.notification_battery)
+            val rings = intArrayOf(R.id.n_ring_l, R.id.n_ring_c, R.id.n_ring_r)
+            val pcts = intArrayOf(R.id.n_pct_l, R.id.n_pct_c, R.id.n_pct_r)
+            val names = intArrayOf(R.string.status_left, R.string.status_case, R.string.status_right)
+            val statuses = intArrayOf(st.leftStatus, -1, st.rightStatus)
+            for (slot in 0..2) {
+                v.setImageViewBitmap(rings[slot], com.spizganed.quickbuds.widget.QuickBudsWidget.notificationRing(this, levels[slot], slot, statuses[slot]))
+                v.setTextViewText(pcts[slot], if (levels[slot] >= 0) "${levels[slot]}%" else "–")
+                v.setContentDescription(rings[slot], getString(names[slot]))
+            }
+            b.setCustomContentView(v).setStyle(Notification.DecoratedCustomViewStyle())
         }
+        return b.build()
+    }
+
+    /**
+     * The status bar chip text, 7 characters at most: the levels of the buds outside the case, left then right
+     * ("82 80", "100 100" at most, one number with one bud out). Null when no bud is out: no chip.
+     */
+    private fun chipText(st: WidgetStateStore.State): String? {
+        // Status 4 = in the case, 0 = in the case and asleep (a closed lid).
+        fun shown(level: Int, status: Int) = level.takeIf { it >= 0 && status != 4 && status != 0 }
+        return listOfNotNull(shown(st.leftBattery, st.leftStatus), shown(st.rightBattery, st.rightStatus))
+            .takeIf { it.isNotEmpty() }?.joinToString(" ")
+    }
+
+    /** Reposts the notification when the shown levels or the connection changed. */
+    private fun updateNotification() {
+        val st = WidgetStateStore.read(this)
+        val key = "$goodbye ${linkUp()} ${st.connected} ${st.leftBattery} ${st.caseBattery} ${st.rightBattery} ${st.leftStatus} ${st.rightStatus}"
+        if (key == shownLevels) return
+        shownLevels = key
+        try {
+            getSystemService(NotificationManager::class.java).notify(1, buildNotification())
+        } catch (e: Exception) {
+            statusLog("[SVC] notification update failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Two channels: the small one (minimum importance, folded, no status bar icon) and the full one
+     * (low importance, open, with the battery rings). [PREF_FULL_NOTIFICATION] picks one.
+     */
+    private fun createChannels() {
+        fun channel(id: String, name: String, importance: Int) = NotificationChannel(id, name, importance).apply {
+            setShowBadge(false)
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
+            description = "Keeps the connection to your earbuds alive"
+        }
+        getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(
+            channel(CHANNEL_ID, "Buds Connection", NotificationManager.IMPORTANCE_MIN),
+            channel(CHANNEL_FULL_ID, "Battery", NotificationManager.IMPORTANCE_LOW)))
+    }
+
+    /** The status bar chip (Android 16+ live update): the setting is on and the system lets the app post promoted notifications. */
+    private fun liveChip(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 36 || !fullNotification()) return false
+        if (!getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).getBoolean(PREF_LIVE_CHIP, false)) return false
+        return getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
+    }
+
+    private fun fullNotification() =
+        getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).getBoolean(PREF_FULL_NOTIFICATION, true)
+
+    /** Settings › Full notification: repost on the other channel at once. */
+    private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == PREF_FULL_NOTIFICATION || key == PREF_LIVE_CHIP || key == PREF_LOCK_NOTIFICATION) { shownLevels = null; updateNotification() }
+    }
+
+    /** Settings › Lock the notification: the user cannot swipe the service notification away (issue 36). */
+    private fun lockNotification() =
+        getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).getBoolean(PREF_LOCK_NOTIFICATION, false)
+
+    private fun startForegroundService() {
+        createChannels()
+        val notification = buildNotification()
         // Android 12+ refuses this when the app is in the background (report: realme RMX3890, Android 15). Stop instead of crashing.
         try {
             startForeground(1, notification)
@@ -388,15 +527,22 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             statusLog("[SVC] startForeground refused: ${e.javaClass.simpleName}")
             stopSelf()
         } catch (e: SecurityException) {
-            // A real phone without the permission stops here. Virtual buds only need the bound service.
+            // A phone without the permission stops here.
             statusLog("[SVC] startForeground refused: ${e.javaClass.simpleName}")
-            if (!VirtualBuds.on(this)) stopSelf()
+            stopSelf()
         }
     }
 
     override fun onBind(intent: Intent?): IBinder {
         statusLog("[SVC] onBind")
+        bindCount++
         return binder
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        bindCount = (bindCount - 1).coerceAtLeast(0)
+        if (bindCount == 0) scheduleIdleCheck(IDLE_MS)
+        return false
     }
 
     override fun onDestroy() {
@@ -406,16 +552,17 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         // Close the RFCOMM link with the service: with the background service switched off,
         // leaving the app stops the service, and a live socket must not outlive it.
         try { manager?.disconnect() } catch (e: Exception) { PacketLogger.error("service stop disconnect", e) }
-        try { manager?.setBridge(false) } catch (_: Exception) {}
         try { manager?.removeListener(this) } catch (_: Exception) {}
         try { unregisterReceiver(widgetCommandReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(bluetoothStateReceiver) } catch (_: Exception) {}
+        getSharedPreferences(ThemeRes.PREFS_NAME, MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(prefListener)
         super.onDestroy()
     }
 
     override fun onConnected(connected: Boolean) {
         // Our own sleep, not a lost link: the widget keeps showing the connected state and the last levels until the unlock reconnects.
-        if (!connected && asleep) { statusLog("[SVC] Sleep: widget state kept"); return }
+        if (!connected && asleep) { statusLog("[SVC] Sleep: widget state kept"); updateNotification(); return }
         val st = WidgetStateStore.read(this)
         val before = st.copy()
         st.connected = connected
@@ -440,6 +587,11 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             }
         }
         WidgetStateStore.write(this, st)
+        goodbye = false
+        if (!connected && before.connected && chipShown && liveChip()) {
+            goodbye = true
+            handler.postDelayed({ goodbye = false; updateNotification() }, 1000)
+        }
         if (before.connected != connected) AncWidgetProvider.animate(this, connected, before.takeIf { it.connected })
         else AncWidgetProvider.refreshAll(this)
         if (connected) {
@@ -458,6 +610,8 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             }
         }
         gameEq.update()
+        updateNotification()
+        if (connected) handler.removeCallbacks(idleCheck) else scheduleIdleCheck(IDLE_MS)
     }
 
     override fun onBattery(
@@ -477,6 +631,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         if (right != null || clear) st.rightBattery = right ?: -1
         WidgetStateStore.write(this, st)
         AncWidgetProvider.refreshAll(this)
+        updateNotification()
     }
 
     override fun onWearState(leftRaw: Int, rightRaw: Int, caseSt: Int) {
@@ -503,6 +658,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
             statusLog("[SVC] Wear state: L=$left R=$right case=$caseSt")
             WidgetStateStore.write(this, st)
             AncWidgetProvider.refreshAll(this)
+            updateNotification()
         }
         if (wasWorn && !isWorn(st.leftStatus) && !isWorn(st.rightStatus)) smartPause()
     }
@@ -553,6 +709,8 @@ class BudsService : Service(), BudsConnectionManager.Listener {
 
     override fun onFeatureStates(states: Map<Int, Int>) {
         gameEq.update()
+        // The Quick Settings tiles show more switches than the widget, so they repaint on every answer.
+        com.spizganed.quickbuds.widget.LiveTileService.refresh(this)
         val now = WidgetSettings.FEATURE_BUTTONS.values.map { states[it] }
         if (now == widgetFeatures) return
         widgetFeatures = now
@@ -673,6 +831,14 @@ class BudsService : Service(), BudsConnectionManager.Listener {
     }
 
     companion object {
+        /** The service notification's channel. */
+        private const val CHANNEL_ID = "QuickBuds_Service"
+        /** The full notification's channel: open in the shade, with the battery rings. */
+        private const val CHANNEL_FULL_ID = "QuickBuds_Battery"
+        /** Settings › Full notification. On by default. */
+        const val PREF_FULL_NOTIFICATION = "fullNotification"
+        const val PREF_LIVE_CHIP = "liveChip"
+        const val PREF_LOCK_NOTIFICATION = "lockNotification"
         const val ACTION_FORCE_CONNECT = "com.spizganed.quickbuds.FORCE_CONNECT"
         /** On FORCE_CONNECT: true when the user asked (pill), so phone audio is brought up too. */
         const val EXTRA_WITH_AUDIO = "with_audio"
@@ -684,8 +850,6 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         /** On FORCE_CONNECT from [KeepAliveReceiver]: Android reported the buds' ACL or audio link. */
         const val EXTRA_FROM_LINK = "from_link"
         const val ACTION_FORCE_DISCONNECT = "com.spizganed.quickbuds.FORCE_DISCONNECT"
-        /** Dev tools › Bridge on/off ([RfcommBridge]). */
-        const val ACTION_TOGGLE_BRIDGE = "com.spizganed.quickbuds.TOGGLE_BRIDGE"
         const val ACTION_TILE_SET_ANC = "com.spizganed.quickbuds.TILE_SET_ANC"
         const val EXTRA_TILE_ANC_MODE = "tile_anc_mode"
         const val ACTION_TILE_SET_FEATURE = "com.spizganed.quickbuds.TILE_SET_FEATURE"
@@ -694,6 +858,7 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         const val ACTION_TILE_SET_GAME_MODE = "com.spizganed.quickbuds.TILE_SET_GAME_MODE"
         const val EXTRA_TILE_GAME_MODE_ON = "tile_game_mode_on"
         const val ACTION_WIDGET_COMMAND = "com.spizganed.quickbuds.WIDGET_COMMAND"
+        const val ACTION_NOTIF_DISMISSED = "com.spizganed.quickbuds.NOTIF_DISMISSED"
         const val EXTRA_WIDGET_ACTION = "widget_action"
         const val EXTRA_WIDGET_ANC_MODE = "widget_anc_mode"
         const val EXTRA_WIDGET_GAME_MODE = "widget_game_mode"
@@ -728,6 +893,11 @@ class BudsService : Service(), BudsConnectionManager.Listener {
          * open, nothing starts it from Bluetooth events, and the widget only works with the app open.
          */
         const val PREF_BACKGROUND = "backgroundService"
+
+        /** The link gets this long to come up before an idle service stops. */
+        private const val IDLE_MS = 60_000L
+        /** Bluetooth off: nothing can connect, so the service stops soon. */
+        private const val BT_OFF_MS = 3_000L
 
         fun backgroundAllowed(c: Context) =
             c.getSharedPreferences(ThemeRes.PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_BACKGROUND, true)

@@ -79,6 +79,15 @@ class WidgetSetupActivity : Activity() {
             card.addView(SettingRowFactory.build(this, icon, title, 0, sw) { if (sw.isEnabled) sw.performClick() })
         }
         root.addView(card)
+        // This widget's own Noise cycle modes.
+        if ("cycle" in keys) {
+            root.addView(android.view.View(this), android.widget.LinearLayout.LayoutParams(1, ThemeRes.dp(this, 16f)))
+            val row = SettingRowFactory.build(this, R.drawable.ic_mode_transparency, R.string.widget_cycle, R.string.settings_cycle_sub,
+                SettingRowFactory.buildChevron(this)) {
+                startActivity(Intent(this, NoiseCycleActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
+            }
+            root.addView(SettingRowFactory.card(this).apply { addView(row) })
+        }
         limit(picked.size)
         setContentView(ScrollView(this).apply {
             setBackgroundColor(p.background)
@@ -98,6 +107,7 @@ class WidgetSetupActivity : Activity() {
             "trans" to (R.drawable.ic_mode_transparency to R.string.anc_seg_trans),
             "adapt" to (R.drawable.ic_mode_adaptive to R.string.anc_seg_adapt),
             "off" to (R.drawable.ic_mode_off to R.string.anc_seg_off),
+            "cycle" to (R.drawable.ic_mode_transparency to R.string.widget_cycle),
             "ll" to (R.drawable.ic_low_latency to R.string.row_game_title),
             "wind" to (R.drawable.ic_anc to R.string.row_wind_noise_title),
             "app" to (R.drawable.ic_earbud to R.string.widget_open_app)

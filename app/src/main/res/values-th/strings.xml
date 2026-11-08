@@ -4,6 +4,11 @@
     <string name="action_dev_tools">เครื่องมือนักพัฒนา</string>
     <string name="desktop_nav_overview">ภาพรวม</string>
     <string name="desktop_nav_app_settings">การตั้งค่าแอป</string>
+    <string name="desktop_autostart_title">เริ่มพร้อมคอมพิวเตอร์</string>
+    <string name="desktop_autostart_sub">เปิดในถาดระบบเมื่อคุณลงชื่อเข้าใช้</string>
+    <string name="desktop_devtools_sub">แสดงเครื่องมือสำหรับนักพัฒนาในเมนูด้านซ้าย</string>
+    <string name="desktop_copy_log">คัดลอกบันทึก</string>
+    <string name="desktop_dual_empty">เชื่อมต่ออุปกรณ์เพื่อแสดงที่นี่</string>
     <string name="action_settings">การตั้งค่า</string>
     <string name="conn_on">เชื่อมต่อแล้ว</string>
     <string name="conn_off">ไม่ได้เชื่อมต่อ</string>
@@ -268,6 +273,12 @@
     <string name="settings_haptics_sub">สั่นเมื่อมีการเปลี่ยนการตั้งค่า</string>
     <string name="settings_clear_battery_title">ซ่อนระดับแบตเตอรี่เก่า</string>
     <string name="settings_clear_battery_sub">ล้างระดับที่หูฟังหยุดรายงาน เช่น เคสหลังปิดฝา</string>
+    <string name="settings_full_notif_title">แบตเตอรี่ในการแจ้งเตือน</string>
+    <string name="settings_full_notif_sub">แสดงระดับแบตเตอรี่ ปิด: การแจ้งเตือนขนาดเล็กโดยไม่มีไอคอนในแถบสถานะ</string>
+    <string name="settings_live_chip_title">ชิปในแถบสถานะ</string>
+    <string name="settings_live_chip_sub">แสดงระดับแบตเตอรี่ของหูฟังที่คุณสวมอยู่ในแถบสถานะ ต้องใช้ Android 16 ปิด: วงแหวนแบตเตอรี่ในการแจ้งเตือน</string>
+    <string name="settings_lock_notif_title">ล็อกการแจ้งเตือน</string>
+    <string name="settings_lock_notif_sub">ปัดการแจ้งเตือนทิ้งไม่ได้ ปิด: ปัดทิ้งได้</string>
     <string name="settings_background_title">บริการเบื้องหลัง</string>
     <string name="settings_background_sub">เชื่อมต่อไว้เมื่อปิดแอป</string>
     <string name="settings_background_warn_title">ปิดบริการเบื้องหลังไหม</string>
@@ -275,10 +286,6 @@
     <string name="settings_background_warn_action">ปิด</string>
     <string name="settings_devtools_title">ปุ่มเครื่องมือนักพัฒนา</string>
     <string name="settings_devtools_sub">แสดงเครื่องมือนักพัฒนาที่ส่วนหัว</string>
-    <string name="virtual_buds">หูฟังเสมือน</string>
-    <string name="virtual_buds_sub">เชื่อมต่อกับเซิร์ฟเวอร์หูฟังปลอมแทนบลูทูธ สำหรับการพัฒนาเท่านั้น</string>
-    <string name="virtual_buds_address">โฮสต์และพอร์ต</string>
-    <string name="virtual_buds_name">ชื่อที่แสดง</string>
     <string name="settings_update_sub">ติดตั้ง %1$s แล้ว</string>
     <string name="settings_about_title">เกี่ยวกับ</string>
     <string name="settings_about_sub">เวอร์ชัน สัญญาอนุญาต GitHub</string>
@@ -349,6 +356,7 @@
     <string name="widget_mode_anc_smart">ANC อัจฉริยะ</string>
     <string name="widget_low_latency">เวลาแฝงต่ำ</string>
     <string name="widget_battery_name">QuickBuds แบตเตอรี่</string>
+    <string name="widget_strip_name">แถบแบตเตอรี่ QuickBuds</string>
     <string name="settings_language_title">ภาษา</string>
     <string name="settings_language_sub">ภาษาของแอป</string>
     <string name="language_system">ค่าเริ่มต้นของระบบ</string>
@@ -462,6 +470,11 @@
     <string name="problem_unsupported">QuickBuds รองรับเฉพาะหูฟัง OnePlus, OPPO และ realme เลือกรุ่นของคุณจากรายการ</string>
     <string name="problem_supported_list">ดูหูฟังที่รองรับทั้งหมด</string>
     <string name="problem_log_empty">บันทึกว่างเปล่า: หูฟังยังไม่เชื่อมต่อ เชื่อมต่อหูฟังก่อน แล้วค่อยส่งความคิดเห็น</string>
+    <string name="problem_capture_hint">ฟีเจอร์ไม่ทำงานหรือไม่มี? บันทึกของแอปไม่เพียงพอ เปิด issue ใน GitHub พร้อม Bluetooth snoop log ของ HeyMelody หรือ realme Link และวิดีโอบันทึกหน้าจอ</string>
+    <string name="problem_capture_link">วิธีสร้าง snoop log</string>
+    <string name="capture_ask_title">ช่วยแก้ไขฟีเจอร์นี้</string>
+    <string name="capture_ask_body">บันทึกของแอปไม่เพียงพอสำหรับแก้ไขฟีเจอร์ที่ไม่ทำงานหรือไม่มี เปิด issue ใน GitHub พร้อม Bluetooth snoop log ของ HeyMelody หรือ realme Link และวิดีโอบันทึกหน้าจอของแอปนั้น แบบฟอร์มแสดงขั้นตอน</string>
+    <string name="capture_ask_open">เปิด issue ใน GitHub</string>
     <string name="test_title">ทดสอบหูฟัง</string>
     <string name="test_sub">ลองใช้ทุกฟีเจอร์แล้วส่งผลลัพธ์</string>
     <string name="test_ask_body">QuickBuds ยังไม่ได้รับการยืนยันกับหูฟังนี้ การทดสอบสั้น ๆ จะแสดงว่าอะไรใช้งานได้ ไม่มีสิ่งใดถูกส่งจนกว่าคุณจะแตะส่ง</string>
@@ -578,4 +591,19 @@
     <string name="widget_tap_opens_title">แตะเพื่อเปิด QuickBuds</string>
     <string name="widget_tap_opens_sub">แตะวิดเจ็ตเพื่อเปิดแอป</string>
     <string name="widget_open_app">เปิด QuickBuds</string>
+    <string name="widget_cycle">สลับโหมดเสียง</string>
+    <string name="tile_on">เปิด</string>
+    <string name="tile_off">ปิด</string>
+    <string name="cycle_intro">เลือกอย่างน้อย 2 โหมด การแตะไทล์หรือปุ่มสลับโหมดเสียงจะไปยังโหมดถัดไปตามลำดับนี้</string>
+    <string name="settings_cycle_sub">โหมดของไทล์และปุ่มวิดเจ็ต</string>
+    <string name="settings_tile_title">ไทล์การตั้งค่าด่วน</string>
+    <string name="widget_cycle_name">QuickBuds สลับโหมดเสียง</string>
+    <string name="support_kofi_title">ชอบ QuickBuds ไหม?</string>
+    <string name="support_kofi_body">QuickBuds ใช้ฟรีและสร้างโดยคนเพียงคนเดียว หากแอปช่วยคุณได้ ทิปเล็ก ๆ บน Ko-fi ช่วยให้โปรเจกต์เดินต่อไปได้</string>
+    <string name="support_kofi_action">สนับสนุนบน Ko-fi</string>
+    <string name="support_github_title">ชอบ QuickBuds ไหม?</string>
+    <string name="support_github_body">ดาวบน GitHub ช่วยให้เจ้าของหูฟังคนอื่นพบแอปนี้</string>
+    <string name="support_github_action">ให้ดาวบน GitHub</string>
+    <string name="support_later">ไว้ทีหลัง</string>
+    <string name="support_never">ไม่ต้องถามอีก</string>
 </resources>

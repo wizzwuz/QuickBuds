@@ -4,7 +4,7 @@ Matches QuickBuds 5.4.5 (version code 52).
 
 This is the wire format of the OPPO / OnePlus / realme earbud RFCOMM link. One protocol layer
 implements it in Kotlin: `protocol/`, which the Android app runs. Each section names its code file.
-The desktop apps decode with `desktop/src/protocol.rs` and build commands with `core/src/cmd.rs`; their feature
+The desktop apps decode with `desktop-tauri/src/protocol.rs` and build commands with `core/src/cmd.rs`; their feature
 sync is `core/src/feature_sync.rs`. Phase E moves the rest of the decoding into `core/`, the Rust port of `protocol/`.
 
 Each fact comes from a capture, from our own buds, or from the vendor apps' behaviour (studied for
@@ -33,6 +33,31 @@ Never promote a claim without evidence. Never remove a `[GUESS]` tag to tidy up.
 7. **Do not refute a theory with a sample that may be a different kind of event.**
 
 Update this file in the same commit as the protocol change.
+
+---
+
+## How the buds behave
+
+The facts here come from captures, logs and tests. Details and per-model rules are in sections 3, 13-16, 18 and 21.
+
+- **The app is a remote control.** The buds decide. An ack of `00` means "accepted", not "applied". The app shows only
+  what the buds report, so it reads every write back (section 3, [FEATURE-SYNC.md](./FEATURE-SYNC.md)).
+- **Three kinds of answer, and one exception.**
+  - Answers with the value: reads. The reply repeats the `Seq`. The OnePlus Buds 4 echo a status read with a non-zero `Seq`.
+  - Acks only: writes. Status `00` can hide a dropped value. The Buds 4 acked `0x0021` and read back `0x0001` `[CAPTURE]`.
+  - Silent: a wrong command number, and `0x0402`, get no reply `[CAPTURE]`. The Air7 Pro lists `0x012A` and never answers it.
+    The realme Buds T310 do not answer `0x0124`. They never push the game-mode change (reports #16 and #73).
+    An ANC change is silent until the app subscribes to push `03`.
+  - Exception: the realme Buds T100 answer with their own `Seq`, not ours (report #100).
+- **3D (spatial) audio gives no clue that it works.** The realme Buds Air7 Pro play no sound on the `1B` switch (issue #9).
+  The OPPO Enco Buds3 Pro list `1B` and report `1B=1` after a write, yet two owners hear no 3D audio (reports #60 and #61).
+  The app hides the row on that model.
+- **The case does not report "closed" on some models.** The OnePlus Buds 4 report the case and a bud inside it only
+  while the lid is open. A closed lid leaves only the outside bud in the reply. The pushes fall to `0` about 1 s before the socket drops. The realme Buds Air7 Pro send the case at level `0` with the lid closed (issue #9).
+- **Some models have no wear detection.** The realme Buds T200, T200x and the OnePlus Nord Buds 3r answer "out" for a bud
+  in every state (report #46). They answer `0` or `4` in the case. The Bullets Wireless Z3 and the Buds Ace report `3`.
+- **Models differ in features.** The status reply and the `0x8100` bitmap list what a model claims. A claim is not proof:
+  see the Enco Buds3 Pro above. Section 21 lists the model rules.
 
 ---
 
@@ -364,7 +389,7 @@ Details in the sections cited. `—` = empty payload.
 | `0x0404` | ANC mode / hold cycle | `01 01 <mask>` / `02 <kind> <mask>` | 14 |
 | `0x0405` | Fit test | `01` / `00` | 20 |
 | `0x0406` | Select built-in EQ | `<id>` | 17 |
-| `0x0407` | Volume enhancer (realme Buds T01) | `<01 on, 00 off>` | 22 |
+| `0x0407` | Volume enhancer (realme Buds T01; T310 and T500 Pro untested) | `<01 on, 00 off>` | 22 |
 | `0x0408` | Related-device list | `<hostType> <host MAC 6> <count>`, then `<type> <MAC 6> <state>` per device; at most 6 | 22 |
 | `0x0409` | Unused | — | 22 |
 | `0x040B` | Unused | — | 22 |
@@ -1028,7 +1053,7 @@ Every rule in this section names the model id, the byte and the value. A topic s
 - OPPO Enco Buds2 `064810`: `statusQuery` `05 06` `[TESTED]`.
 - realme Buds T310 `063C12`: lacks ids `04 0B 18 27 35` (status `01`) `[CAPTURE]`. It has `windMode`.
 - realme Link rows: dynamic sound `1D`, enhance voice `09`, wind noise `1A`, game mode `06`, wear `04`, dual `11`, Hi-Res `18`, 3D sound `1B`; a second enhance voice setter writes `0C`; power saving is reported as `05` `[VENDOR]`.
-- Models with `windMode`: `0x010D` asks `1A` only for them. realme Buds Air7 Pro `064C12` and T310 `063C12` have the wind-noise row in realme Link. Report #46 says the vendor app shows it `[VENDOR]`. No capture proves that every `windMode` model answers `[GUESS]`.
+- Models with `windMode`: `0x010D` asks `1A` only for them. realme Buds Air7 Pro `064C12`, T310 `063C12` and T500 Pro `066452` have the wind-noise row in realme Link (T500 Pro: issue 30). Report #46 says the vendor app shows it `[VENDOR]`. No capture proves that every `windMode` model answers `[GUESS]`.
 - realme models with a hearing profile `[VENDOR]`: Air8 Pro `066C12`, Air7 Pro `064C12`, Air 5 Pro `061C12`, Air6 Pro `063012`. The T500 Pro `066452` does not list one (report #21), and its buds do not answer the tones.
 - OnePlus Buds 4 `065414`: refuses `18 01` 32 times while the phone plays AAC; accepts it on LHDC V5 `[CAPTURE]`.
 - OPPO Enco Buds3 Pro: `1B` is in the status reply and reports `1B=1`, but `0x012A` is absent; two owners hear no 3D audio (reports #60 #61). The row is hidden through `statusQuery` `05 11 06` `[CAPTURE]`.

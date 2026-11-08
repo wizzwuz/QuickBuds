@@ -4,6 +4,11 @@
     <string name="action_dev_tools">Entwicklertools</string>
     <string name="desktop_nav_overview">Übersicht</string>
     <string name="desktop_nav_app_settings">App-Einstellungen</string>
+    <string name="desktop_autostart_title">Mit dem Computer starten</string>
+    <string name="desktop_autostart_sub">Startet in der Taskleiste, wenn du dich anmeldest</string>
+    <string name="desktop_devtools_sub">Dev-Tools im Menü links anzeigen</string>
+    <string name="desktop_copy_log">Protokoll kopieren</string>
+    <string name="desktop_dual_empty">Verbinde ein Gerät, um es hier anzuzeigen</string>
     <string name="action_settings">Einstellungen</string>
     <string name="conn_on">Verbunden</string>
     <string name="conn_off">Getrennt</string>
@@ -268,6 +273,12 @@
     <string name="settings_haptics_sub">Vibrieren, wenn sich eine Einstellung ändert</string>
     <string name="settings_clear_battery_title">Alte Akkustände ausblenden</string>
     <string name="settings_clear_battery_sub">Einen Stand löschen, den die Earbuds nicht mehr melden, etwa das Case nach dem Schließen</string>
+    <string name="settings_full_notif_title">Akku in der Benachrichtigung</string>
+    <string name="settings_full_notif_sub">Zeigt die Akkustände. Aus: kleine Benachrichtigung ohne Symbol in der Statusleiste</string>
+    <string name="settings_live_chip_title">Chip in der Statusleiste</string>
+    <string name="settings_live_chip_sub">Zeigt die Akkustände der getragenen Ohrhörer in der Statusleiste. Braucht Android 16. Aus: Akkuringe in der Benachrichtigung</string>
+    <string name="settings_lock_notif_title">Benachrichtigung sperren</string>
+    <string name="settings_lock_notif_sub">Die Benachrichtigung lässt sich nicht wegwischen. Aus: Sie lässt sich wegwischen</string>
     <string name="settings_background_title">Hintergrunddienst</string>
     <string name="settings_background_sub">Bei geschlossener App verbunden bleiben</string>
     <string name="settings_background_warn_title">Hintergrunddienst ausschalten?</string>
@@ -275,10 +286,6 @@
     <string name="settings_background_warn_action">Ausschalten</string>
     <string name="settings_devtools_title">Button für Entwicklertools</string>
     <string name="settings_devtools_sub">Entwicklertools in der Kopfzeile anzeigen</string>
-    <string name="virtual_buds">Virtuelle Ohrhörer</string>
-    <string name="virtual_buds_sub">Statt Bluetooth mit einem gefälschten Ohrhörer-Server verbinden. Nur für die Entwicklung.</string>
-    <string name="virtual_buds_address">Host und Port</string>
-    <string name="virtual_buds_name">Angezeigter Name</string>
     <string name="settings_update_sub">Installiert: %1$s</string>
     <string name="settings_about_title">Über</string>
     <string name="settings_about_sub">Version, Lizenzen, GitHub</string>
@@ -347,6 +354,7 @@
     <string name="widget_mode_anc_smart">ANC intelligent</string>
     <string name="widget_low_latency">Niedrige Latenz</string>
     <string name="widget_battery_name">QuickBuds Akku</string>
+    <string name="widget_strip_name">QuickBuds Akkuleiste</string>
     <string name="settings_language_title">Sprache</string>
     <string name="settings_language_sub">App-Sprache</string>
     <string name="language_system">Systemstandard</string>
@@ -460,6 +468,11 @@
     <string name="problem_unsupported">QuickBuds unterstützt nur Ohrhörer von OnePlus, OPPO und realme. Wähle dein Modell aus der Liste.</string>
     <string name="problem_supported_list">Alle unterstützten Ohrhörer ansehen</string>
     <string name="problem_log_empty">Das Protokoll ist leer: Deine Ohrhörer haben sich noch nicht verbunden. Verbinde sie zuerst und sende dann dein Feedback.</string>
+    <string name="problem_capture_hint">Eine Funktion geht nicht oder fehlt? Das App-Log reicht nicht. Erstelle ein GitHub-Issue mit einem Bluetooth-Snoop-Log von HeyMelody oder realme Link und einer Bildschirmaufnahme.</string>
+    <string name="problem_capture_link">So erstellst du ein Snoop-Log</string>
+    <string name="capture_ask_title">Hilf, diese Funktion zu reparieren</string>
+    <string name="capture_ask_body">Das App-Log reicht nicht, um eine fehlende oder defekte Funktion zu reparieren. Erstelle ein GitHub-Issue mit einem Bluetooth-Snoop-Log von HeyMelody oder realme Link und einer Bildschirmaufnahme dieser App. Das Formular zeigt die Schritte.</string>
+    <string name="capture_ask_open">GitHub-Issue erstellen</string>
     <string name="test_title">Earbuds testen</string>
     <string name="test_sub">Jede Funktion ausprobieren und das Ergebnis senden</string>
     <string name="test_ask_body">QuickBuds ist für diese Earbuds noch nicht bestätigt. Ein kurzer Test zeigt, was funktioniert. Nichts wird gesendet, bevor du auf Senden tippst.</string>
@@ -576,4 +589,19 @@
     <string name="widget_tap_opens_title">Tippen öffnet QuickBuds</string>
     <string name="widget_tap_opens_sub">Ein Tipp auf das Widget öffnet die App</string>
     <string name="widget_open_app">QuickBuds öffnen</string>
+    <string name="widget_cycle">Geräuschmodus wechseln</string>
+    <string name="tile_on">An</string>
+    <string name="tile_off">Aus</string>
+    <string name="cycle_intro">Wähle mindestens 2 Modi. Ein Tipp auf die Kachel Geräuschsteuerung oder die Taste Geräuschmodus wechseln springt zum nächsten Modus, in dieser Reihenfolge.</string>
+    <string name="settings_cycle_sub">Modi für die Kachel und die Widget-Taste</string>
+    <string name="settings_tile_title">Schnelleinstellungs-Kachel</string>
+    <string name="widget_cycle_name">QuickBuds Geräuschmodus</string>
+    <string name="support_kofi_title">Gefällt dir QuickBuds?</string>
+    <string name="support_kofi_body">QuickBuds ist kostenlos und wird von einer Person gebaut. Wenn es dir hilft, hält ein kleines Trinkgeld auf Ko-fi das Projekt am Laufen.</string>
+    <string name="support_kofi_action">Auf Ko-fi unterstützen</string>
+    <string name="support_github_title">Gefällt dir QuickBuds?</string>
+    <string name="support_github_body">Ein Stern auf GitHub hilft anderen Besitzern von Ohrhörern, die App zu finden.</string>
+    <string name="support_github_action">Auf GitHub einen Stern geben</string>
+    <string name="support_later">Später</string>
+    <string name="support_never">Nicht mehr fragen</string>
 </resources>

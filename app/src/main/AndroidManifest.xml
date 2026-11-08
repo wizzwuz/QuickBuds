@@ -15,6 +15,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- Widget taps tick through the vibrator (Haptics.tick); no view of ours is on screen then. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -241,6 +242,50 @@
           that needs RECEIVE_BOOT_COMPLETED, and the app schedules the job again on each open.
         -->
         <service
+            android:name=".widget.NoiseTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_mode_anc_medium"
+            android:label="@string/anc_section"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".widget.OpenAppTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_buds"
+            android:label="@string/widget_open_app"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".widget.LowLatencyTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_bolt"
+            android:label="@string/row_game_title"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".widget.WindTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_anc"
+            android:label="@string/row_wind_noise_title"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".ui.UpdateJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
@@ -293,6 +338,18 @@
         </receiver>
 
         <receiver
+            android:name=".widget.BatteryStripWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_strip_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_strip_info" />
+        </receiver>
+
+        <receiver
             android:name=".widget.ControlsWidgetProvider"
             android:exported="true"
             android:label="@string/widget_controls_name">
@@ -304,7 +361,30 @@
                 android:resource="@xml/widget_controls_info" />
         </receiver>
 
+        <receiver
+            android:name=".widget.NoiseCycleWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_cycle_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_cycle_info" />
+        </receiver>
+
         <!-- Exported: the launcher opens it when a widget is placed or reconfigured. -->
+        <activity
+            android:name=".widget.NoiseCycleActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".widget.WidgetSetupActivity"
             android:exported="true"

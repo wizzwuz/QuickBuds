@@ -4,6 +4,11 @@
     <string name="action_dev_tools">Công cụ nhà phát triển</string>
     <string name="desktop_nav_overview">Tổng quan</string>
     <string name="desktop_nav_app_settings">Cài đặt ứng dụng</string>
+    <string name="desktop_autostart_title">Khởi động cùng máy tính</string>
+    <string name="desktop_autostart_sub">Mở trong khay hệ thống khi bạn đăng nhập</string>
+    <string name="desktop_devtools_sub">Hiện công cụ nhà phát triển trong menu bên trái</string>
+    <string name="desktop_copy_log">Sao chép nhật ký</string>
+    <string name="desktop_dual_empty">Hãy kết nối một thiết bị để hiển thị tại đây</string>
     <string name="action_settings">Cài đặt</string>
     <string name="conn_on">Đã kết nối</string>
     <string name="conn_off">Đã ngắt kết nối</string>
@@ -268,6 +273,12 @@
     <string name="settings_haptics_sub">Rung khi thay đổi cài đặt</string>
     <string name="settings_clear_battery_title">Ẩn mức pin cũ</string>
     <string name="settings_clear_battery_sub">Xóa mức pin mà tai nghe ngừng báo, như hộp sạc sau khi đóng nắp</string>
+    <string name="settings_full_notif_title">Pin trong thông báo</string>
+    <string name="settings_full_notif_sub">Hiện mức pin. Tắt: thông báo nhỏ, không có biểu tượng trên thanh trạng thái</string>
+    <string name="settings_live_chip_title">Chip trên thanh trạng thái</string>
+    <string name="settings_live_chip_sub">Hiện mức pin của tai nghe bạn đang đeo trên thanh trạng thái. Cần Android 16. Tắt: vòng pin trong thông báo</string>
+    <string name="settings_lock_notif_title">Khóa thông báo</string>
+    <string name="settings_lock_notif_sub">Không thể vuốt để xóa thông báo. Tắt: có thể vuốt để xóa</string>
     <string name="settings_background_title">Dịch vụ nền</string>
     <string name="settings_background_sub">Giữ kết nối khi đóng ứng dụng</string>
     <string name="settings_background_warn_title">Tắt dịch vụ nền?</string>
@@ -275,10 +286,6 @@
     <string name="settings_background_warn_action">Tắt</string>
     <string name="settings_devtools_title">Nút công cụ nhà phát triển</string>
     <string name="settings_devtools_sub">Hiện công cụ nhà phát triển ở đầu trang</string>
-    <string name="virtual_buds">Tai nghe ảo</string>
-    <string name="virtual_buds_sub">Kết nối tới máy chủ tai nghe giả thay vì Bluetooth. Chỉ dùng cho phát triển.</string>
-    <string name="virtual_buds_address">Máy chủ và cổng</string>
-    <string name="virtual_buds_name">Tên hiển thị</string>
     <string name="settings_update_sub">Đã cài %1$s</string>
     <string name="settings_about_title">Giới thiệu</string>
     <string name="settings_about_sub">Phiên bản, giấy phép, GitHub</string>
@@ -349,6 +356,7 @@
     <string name="widget_mode_anc_smart">ANC Thông minh</string>
     <string name="widget_low_latency">Độ trễ thấp</string>
     <string name="widget_battery_name">QuickBuds pin</string>
+    <string name="widget_strip_name">Thanh pin QuickBuds</string>
     <string name="settings_language_title">Ngôn ngữ</string>
     <string name="settings_language_sub">Ngôn ngữ ứng dụng</string>
     <string name="language_system">Mặc định hệ thống</string>
@@ -462,6 +470,11 @@
     <string name="problem_unsupported">QuickBuds chỉ hỗ trợ tai nghe OnePlus, OPPO và realme. Hãy chọn mẫu của bạn trong danh sách.</string>
     <string name="problem_supported_list">Xem tất cả tai nghe được hỗ trợ</string>
     <string name="problem_log_empty">Nhật ký trống: tai nghe của bạn chưa kết nối. Hãy kết nối tai nghe trước, rồi gửi phản hồi.</string>
+    <string name="problem_capture_hint">Một tính năng không chạy hoặc bị thiếu? Nhật ký ứng dụng là chưa đủ. Hãy mở issue trên GitHub kèm nhật ký snoop Bluetooth của HeyMelody hoặc realme Link và một video quay màn hình.</string>
+    <string name="problem_capture_link">Cách tạo nhật ký snoop</string>
+    <string name="capture_ask_title">Giúp sửa tính năng này</string>
+    <string name="capture_ask_body">Nhật ký ứng dụng là chưa đủ để sửa một tính năng không chạy hoặc bị thiếu. Hãy mở issue trên GitHub kèm nhật ký snoop Bluetooth của HeyMelody hoặc realme Link và video quay màn hình của ứng dụng đó. Biểu mẫu có các bước.</string>
+    <string name="capture_ask_open">Mở issue trên GitHub</string>
     <string name="test_title">Kiểm tra tai nghe</string>
     <string name="test_sub">Thử từng tính năng và gửi kết quả</string>
     <string name="test_ask_body">QuickBuds chưa được xác nhận trên tai nghe này. Một bài kiểm tra ngắn cho thấy tính năng nào hoạt động. Không có gì được gửi cho đến khi bạn nhấn Gửi.</string>
@@ -578,4 +591,19 @@
     <string name="widget_tap_opens_title">Chạm để mở QuickBuds</string>
     <string name="widget_tap_opens_sub">Chạm vào tiện ích để mở ứng dụng</string>
     <string name="widget_open_app">Mở QuickBuds</string>
+    <string name="widget_cycle">Chuyển chế độ ồn</string>
+    <string name="tile_on">Bật</string>
+    <string name="tile_off">Tắt</string>
+    <string name="cycle_intro">Chọn ít nhất 2 chế độ. Chạm vào ô hoặc nút Chuyển chế độ ồn sẽ chuyển sang chế độ tiếp theo, theo thứ tự này.</string>
+    <string name="settings_cycle_sub">Các chế độ cho ô và nút tiện ích</string>
+    <string name="settings_tile_title">Ô Cài đặt nhanh</string>
+    <string name="widget_cycle_name">QuickBuds chuyển chế độ ồn</string>
+    <string name="support_kofi_title">Bạn thích QuickBuds?</string>
+    <string name="support_kofi_body">QuickBuds miễn phí và do một người làm ra. Nếu ứng dụng giúp ích cho bạn, một khoản tip nhỏ trên Ko-fi giúp dự án tiếp tục.</string>
+    <string name="support_kofi_action">Ủng hộ trên Ko-fi</string>
+    <string name="support_github_title">Bạn thích QuickBuds?</string>
+    <string name="support_github_body">Một ngôi sao trên GitHub giúp chủ sở hữu tai nghe khác tìm thấy ứng dụng.</string>
+    <string name="support_github_action">Gắn sao trên GitHub</string>
+    <string name="support_later">Để sau</string>
+    <string name="support_never">Không hỏi lại</string>
 </resources>

@@ -4,6 +4,11 @@
     <string name="action_dev_tools">Herramientas de desarrollo</string>
     <string name="desktop_nav_overview">Resumen</string>
     <string name="desktop_nav_app_settings">Ajustes de la app</string>
+    <string name="desktop_autostart_title">Iniciar con el ordenador</string>
+    <string name="desktop_autostart_sub">Se abre en la bandeja al iniciar sesión</string>
+    <string name="desktop_devtools_sub">Mostrar las herramientas de desarrollo en el menú de la izquierda</string>
+    <string name="desktop_copy_log">Copiar registro</string>
+    <string name="desktop_dual_empty">Conecta un dispositivo para mostrarlo aquí</string>
     <string name="action_settings">Ajustes</string>
     <string name="conn_on">Conectado</string>
     <string name="conn_off">Desconectado</string>
@@ -268,6 +273,12 @@
     <string name="settings_haptics_sub">Vibrar al cambiar un ajuste</string>
     <string name="settings_clear_battery_title">Ocultar niveles de batería antiguos</string>
     <string name="settings_clear_battery_sub">Borrar un nivel que los auriculares dejan de informar, como el estuche al cerrar la tapa</string>
+    <string name="settings_full_notif_title">Batería en la notificación</string>
+    <string name="settings_full_notif_sub">Muestra los niveles. Desactivado: notificación pequeña sin icono en la barra de estado</string>
+    <string name="settings_live_chip_title">Chip en la barra de estado</string>
+    <string name="settings_live_chip_sub">Muestra los niveles de los auriculares que llevas puestos en la barra de estado. Requiere Android 16. Desactivado: anillos de batería en la notificación</string>
+    <string name="settings_lock_notif_title">Bloquear la notificación</string>
+    <string name="settings_lock_notif_sub">La notificación no se puede quitar deslizando. Desactivado: se puede quitar</string>
     <string name="settings_background_title">Servicio en segundo plano</string>
     <string name="settings_background_sub">Mantener la conexión con la app cerrada</string>
     <string name="settings_background_warn_title">¿Desactivar el servicio en segundo plano?</string>
@@ -275,10 +286,6 @@
     <string name="settings_background_warn_action">Desactivar</string>
     <string name="settings_devtools_title">Botón de herramientas de desarrollo</string>
     <string name="settings_devtools_sub">Mostrar las herramientas de desarrollo en la cabecera</string>
-    <string name="virtual_buds">Auriculares virtuales</string>
-    <string name="virtual_buds_sub">Conecta con un servidor de auriculares falso en lugar de Bluetooth. Solo para desarrollo.</string>
-    <string name="virtual_buds_address">Host y puerto</string>
-    <string name="virtual_buds_name">Nombre mostrado</string>
     <string name="settings_update_sub">Instalada %1$s</string>
     <string name="settings_about_title">Acerca de</string>
     <string name="settings_about_sub">Versión, licencias, GitHub</string>
@@ -347,6 +354,7 @@
     <string name="widget_mode_anc_smart">ANC inteligente</string>
     <string name="widget_low_latency">Baja latencia</string>
     <string name="widget_battery_name">QuickBuds batería</string>
+    <string name="widget_strip_name">Tira de batería QuickBuds</string>
     <string name="settings_language_title">Idioma</string>
     <string name="settings_language_sub">Idioma de la app</string>
     <string name="language_system">Predeterminado del sistema</string>
@@ -460,6 +468,11 @@
     <string name="problem_unsupported">QuickBuds solo es compatible con auriculares OnePlus, OPPO y realme. Elige tu modelo de la lista.</string>
     <string name="problem_supported_list">Ver todos los auriculares compatibles</string>
     <string name="problem_log_empty">El registro está vacío: tus auriculares aún no se han conectado. Conéctalos primero y luego envía tus comentarios.</string>
+    <string name="problem_capture_hint">¿Una función no va o falta? El registro de la app no basta. Abre un issue en GitHub con un registro snoop de Bluetooth de HeyMelody o realme Link y una grabación de pantalla.</string>
+    <string name="problem_capture_link">Cómo crear un registro snoop</string>
+    <string name="capture_ask_title">Ayuda a arreglar esta función</string>
+    <string name="capture_ask_body">El registro de la app no basta para arreglar una función que falla o falta. Abre un issue en GitHub con un registro snoop de Bluetooth de HeyMelody o realme Link y una grabación de pantalla de esa app. El formulario muestra los pasos.</string>
+    <string name="capture_ask_open">Abrir un issue en GitHub</string>
     <string name="test_title">Probar mis auriculares</string>
     <string name="test_sub">Prueba cada función y envía el resultado</string>
     <string name="test_ask_body">QuickBuds aún no está confirmado en estos auriculares. Una prueba corta muestra qué funciona. No se envía nada hasta que toques Enviar.</string>
@@ -576,4 +589,19 @@
     <string name="widget_tap_opens_title">Tocar abre QuickBuds</string>
     <string name="widget_tap_opens_sub">Tocar el widget abre la aplicación</string>
     <string name="widget_open_app">Abrir QuickBuds</string>
+    <string name="widget_cycle">Ciclo de ruido</string>
+    <string name="tile_on">Sí</string>
+    <string name="tile_off">No</string>
+    <string name="cycle_intro">Elige al menos 2 modos. Al tocar el icono de Control de ruido o el botón Ciclo de ruido pasas al siguiente modo, en este orden.</string>
+    <string name="settings_cycle_sub">Modos del icono y del botón del widget</string>
+    <string name="settings_tile_title">Icono de Ajustes rápidos</string>
+    <string name="widget_cycle_name">QuickBuds ciclo de ruido</string>
+    <string name="support_kofi_title">¿Te gusta QuickBuds?</string>
+    <string name="support_kofi_body">QuickBuds es gratis y lo hace una sola persona. Si te ayuda, una pequeña propina en Ko-fi lo mantiene vivo.</string>
+    <string name="support_kofi_action">Apoyar en Ko-fi</string>
+    <string name="support_github_title">¿Te gusta QuickBuds?</string>
+    <string name="support_github_body">Una estrella en GitHub ayuda a otros dueños de auriculares a encontrar la app.</string>
+    <string name="support_github_action">Dar una estrella en GitHub</string>
+    <string name="support_later">Más tarde</string>
+    <string name="support_never">No volver a preguntar</string>
 </resources>
