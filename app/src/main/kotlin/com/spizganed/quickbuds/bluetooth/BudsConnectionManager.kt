@@ -276,15 +276,6 @@ class BudsConnectionManager(private val context: Context) {
      */
     fun setPhoneAudio(device: BluetoothDevice, on: Boolean) {
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return
-        if (!on) {
-            try {
-                val disc = device.javaClass.getMethod("disconnect")
-                val res = disc.invoke(device)
-                log("BluetoothDevice.disconnect() -> $res")
-            } catch (e: Exception) {
-                log("BluetoothDevice.disconnect() failed: ${e.cause ?: e}")
-            }
-        }
         val method = if (on) "connect" else "disconnect"
         val profiles = if (on) listOf(BluetoothProfile.A2DP)
             else listOf(BluetoothProfile.HEADSET, BluetoothProfile.A2DP)
@@ -298,9 +289,7 @@ class BudsConnectionManager(private val context: Context) {
                     } catch (e: Exception) {
                         log("Audio $method profile=$profile failed: ${e.cause ?: e}")
                     } finally {
-                        handler.postDelayed({
-                            try { adapter.closeProfileProxy(profile, proxy) } catch (_: Exception) {}
-                        }, 1500)
+                        adapter.closeProfileProxy(profile, proxy)
                     }
                 }
                 override fun onServiceDisconnected(profile: Int) {}
@@ -753,32 +742,19 @@ class BudsConnectionManager(private val context: Context) {
 
     fun refreshDevices() = sendRaw(Commands.queryDevices(), "query devices")
 
-    /** Optimistically marks a device as disconnected in local list and notifies listeners. */
-    fun markDisconnected(mac: String) {
-        val rev = mac.split(":").reversed().joinToString(":")
-        devices = devices.map {
-            if (it.mac.equals(mac, ignoreCase = true) || it.mac.equals(rev, ignoreCase = true)) {
-                it.copy(connected = false)
-            } else it
-        }
-        handler.post { listeners.forEach { it.onDevices(devices) } }
-    }
-
-    /** Connects or disconnects another device on the list; the buds push the new list. */
+    /** Connects or disconnects another device on the list; refresh after disconnect completes. */
     fun connectDevice(mac: String, on: Boolean) {
+        if (on) {
+            sendRaw(Commands.connectDevice(mac, true), "Connect $mac")
+            return
+        }
         Thread {
             try {
-                sendRawBlocking(Commands.connectDevice(mac, on), "${if (on) "Connect" else "Disconnect"} $mac")
-                val revMac = mac.split(":").reversed().joinToString(":")
-                if (revMac != mac) {
-                    sendRawBlocking(Commands.connectDevice(revMac, on), "${if (on) "Connect" else "Disconnect"} rev $mac")
-                }
-                Thread.sleep(600)
-                refreshDevices()
-                Thread.sleep(1200)
-                refreshDevices()
+                sendRawBlocking(Commands.connectDevice(mac, false), "Disconnect $mac")
+                Thread.sleep(700)
+                sendRawBlocking(Commands.queryDevices(), "refresh devices after disconnect $mac")
             } catch (e: Exception) {
-                log("CONNECT_DEVICE write failed: ${e.message}")
+                log("DISCONNECT $mac failed: ${e.message}")
             }
         }.start()
     }
