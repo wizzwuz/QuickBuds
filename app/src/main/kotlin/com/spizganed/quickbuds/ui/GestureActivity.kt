@@ -2,7 +2,10 @@ package com.spizganed.quickbuds.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.drawable.Drawable
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -10,6 +13,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import com.spizganed.quickbuds.R
 import com.spizganed.quickbuds.bluetooth.BudsService
 import com.spizganed.quickbuds.protocol.AncModes
@@ -324,7 +328,7 @@ class GestureActivity : Activity() {
      */
     private fun buildGestureRow(gesture: Gesture): View {
         val current = GestureConfigStore.load(this, side, gesture)
-        val summary = GestureConfigStore.describe(this, current)
+        val summary = GestureConfigStore.describe(this, side, gesture, current)
 
 
         // NO SUBTITLE, on any gesture row.
@@ -450,10 +454,22 @@ class GestureActivity : Activity() {
         val selected = GestureConfigStore.load(this, side, gesture).toMutableList()
 
         if (!gesture.multiSelect) {
-            choose(getString(gesture.labelRes), options.map { getString(it.labelRes) }, options.indexOfFirst { selected.contains(it) }) { i ->
-                GestureConfigStore.save(this, side, gesture, listOf(options[i]))
-                writeToBuds(gesture, listOf(options[i]))
-                render()
+            val labels = options.map {
+                if (it == GestureAction.CUSTOM_APP) {
+                    val label = GestureConfigStore.getCustomAppLabel(this, side, gesture)
+                    if (!label.isNullOrEmpty()) "${getString(it.labelRes)} ($label)" else getString(it.labelRes)
+                } else getString(it.labelRes)
+            }
+            choose(getString(gesture.labelRes), labels, options.indexOfFirst { selected.contains(it) }) { i ->
+                val chosen = options[i]
+                if (chosen == GestureAction.CUSTOM_APP) {
+                    showAppPickerDialog(gesture)
+                } else {
+                    GestureConfigStore.clearCustomApp(this, side, gesture)
+                    GestureConfigStore.save(this, side, gesture, listOf(chosen))
+                    writeToBuds(gesture, listOf(chosen))
+                    render()
+                }
             }
             return
         }
@@ -508,23 +524,89 @@ class GestureActivity : Activity() {
      */
     private fun showHoldChoiceDialog() {
         val current = GestureConfigStore.load(this, side, Gesture.TAP_HOLD)
-        val noise = current.any { it.holdModeType >= 0 }
+        val isCustomApp = current.contains(GestureAction.CUSTOM_APP)
+        val noise = !isCustomApp && current.any { it.holdModeType >= 0 }
         val choices = model.holdChoices
         choose(
             getString(Gesture.TAP_HOLD.labelRes),
-            choices.map { bit -> if (bit == GestureModel.HOLD_NOISE) getString(R.string.anc_section) else getString(GestureAction.values().first { it.supportBit == bit }.labelRes) },
-            choices.indexOfFirst { bit -> if (bit == GestureModel.HOLD_NOISE) noise else current == listOf(GestureAction.values().first { it.supportBit == bit }) },
+            choices.map { bit ->
+                when (bit) {
+                    GestureModel.HOLD_NOISE -> getString(R.string.anc_section)
+                    GestureModel.HOLD_CUSTOM_APP -> {
+                        val label = GestureConfigStore.getCustomAppLabel(this, side, Gesture.TAP_HOLD)
+                        if (!label.isNullOrEmpty()) "${getString(R.string.gesture_action_custom_app)} ($label)" else getString(R.string.gesture_action_custom_app)
+                    }
+                    else -> getString(GestureAction.values().first { it.supportBit == bit }.labelRes)
+                }
+            },
+            choices.indexOfFirst { bit ->
+                when (bit) {
+                    GestureModel.HOLD_NOISE -> noise
+                    GestureModel.HOLD_CUSTOM_APP -> isCustomApp
+                    else -> current == listOf(GestureAction.values().first { it.supportBit == bit })
+                }
+            },
             always = true
         ) { i ->
             val bit = choices[i]
-            // Noise control opens the mode dialog; the others commit here.
-            if (bit == GestureModel.HOLD_NOISE) showActionDialog(Gesture.TAP_HOLD, noiseModes = true)
-            else {
-                val action = GestureAction.values().first { it.supportBit == bit }
-                GestureConfigStore.save(this, side, Gesture.TAP_HOLD, listOf(action))
-                writeToBuds(Gesture.TAP_HOLD, listOf(action))
-                render()
+            when (bit) {
+                GestureModel.HOLD_NOISE -> {
+                    GestureConfigStore.clearCustomApp(this, side, Gesture.TAP_HOLD)
+                    showActionDialog(Gesture.TAP_HOLD, noiseModes = true)
+                }
+                GestureModel.HOLD_CUSTOM_APP -> {
+                    showAppPickerDialog(Gesture.TAP_HOLD)
+                }
+                else -> {
+                    GestureConfigStore.clearCustomApp(this, side, Gesture.TAP_HOLD)
+                    val action = GestureAction.values().first { it.supportBit == bit }
+                    GestureConfigStore.save(this, side, Gesture.TAP_HOLD, listOf(action))
+                    writeToBuds(Gesture.TAP_HOLD, listOf(action))
+                    render()
+                }
             }
         }
+    }
+
+    private fun showAppPickerDialog(gesture: Gesture) {
+        val pm = packageManager
+        val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val resolveList = pm.queryIntentActivities(mainIntent, 0)
+        data class AppEntry(val pkg: String, val label: String, val icon: Drawable)
+        val appList = resolveList.map { info ->
+            AppEntry(
+                pkg = info.activityInfo.packageName,
+                label = info.loadLabel(pm)?.toString() ?: info.activityInfo.packageName,
+                icon = info.loadIcon(pm)
+            )
+        }.sortedBy { it.label.lowercase() }
+
+        val currentPkg = GestureConfigStore.getCustomApp(this, side, gesture)
+        val sheet = BottomSheetDialog(this)
+        sheet.title(getString(R.string.gesture_custom_app_picker_title))
+            .dismissOnSelect(true)
+            .message(getString(R.string.gesture_custom_app_overlay_tip))
+            .items(appList.map { app ->
+                BottomSheetDialog.Item(
+                    label = app.label,
+                    selected = app.pkg == currentPkg,
+                    icon = app.icon,
+                    onClick = {
+                        GestureConfigStore.saveCustomApp(this@GestureActivity, side, gesture, app.pkg, app.label)
+                        GestureConfigStore.save(this@GestureActivity, side, gesture, listOf(GestureAction.CUSTOM_APP))
+                        writeToBuds(gesture, listOf(GestureAction.CUSTOM_APP))
+                        render()
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@GestureActivity)) {
+                            try {
+                                Toast.makeText(this@GestureActivity, R.string.gesture_custom_app_overlay_tip, Toast.LENGTH_LONG).show()
+                            } catch (_: Exception) {}
+                        }
+                    }
+                )
+            })
+            .cancel(getString(R.string.dialog_cancel)) { sheet.close() }
+        sheet.show()
     }
 }

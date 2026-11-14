@@ -303,6 +303,10 @@
     <string name="gesture_action_anc_adaptive">Adaptive</string>
     <string name="gesture_action_anc_transparency">Transparency</string>
     <string name="gesture_action_anc_off">Off</string>
+    <string name="gesture_action_custom_app" translatable="false">Custom app</string>
+    <string name="gesture_action_custom_app_short" translatable="false">App</string>
+    <string name="gesture_custom_app_picker_title" translatable="false">Select App</string>
+    <string name="gesture_custom_app_overlay_tip" translatable="false">Tip: If app does not open when screen is locked or in background, allow \"Display over other apps\" for QuickBuds in Android Settings.</string>
 
     <!--
       SHORT forms, used ONLY by the row summary (not the dialog, which shows the

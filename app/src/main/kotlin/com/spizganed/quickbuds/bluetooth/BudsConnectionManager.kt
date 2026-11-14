@@ -48,8 +48,14 @@ import com.spizganed.quickbuds.ui.GestureConfigStore
 import com.spizganed.quickbuds.ui.GestureModel
 import com.spizganed.quickbuds.ui.OnCallConfigStore
 import com.spizganed.quickbuds.ui.ThemeRes
+import android.app.PendingIntent
+import android.os.Build
+import android.os.PowerManager
 import com.spizganed.quickbuds.protocol.Commands
 import com.spizganed.quickbuds.protocol.Replies
+import com.spizganed.quickbuds.ui.Gesture
+import com.spizganed.quickbuds.ui.GestureAction
+import com.spizganed.quickbuds.ui.GestureSide
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -1763,8 +1769,11 @@ class BudsConnectionManager(private val context: Context) {
                 is Anc.Level -> {}
             }
 
-            // --- A button or gesture on the buds: push F1. Named only, for captures. ---
-            is Msg.Gesture -> log("BTN EVT: ${UserInteractionParser.describe(payload)}")
+            // --- A button or gesture on the buds: push F1. ---
+            is Msg.Gesture -> {
+                log("BTN EVT: ${UserInteractionParser.describe(payload)}")
+                handleGestureEvent(msg)
+            }
 
             // --- Equalizer replies and push, [CAPTURE] 2026-09-23 ---
             is Msg.EqCurrent -> { equalizer.onCurrent(msg.id); eqChanged() }
@@ -2127,6 +2136,82 @@ class BudsConnectionManager(private val context: Context) {
                     fromStream?.charging ?: lastCase?.isCharging ?: false,
                     lastRight?.isCharging ?: false
                 )
+            }
+        }
+    }
+
+    private fun handleGestureEvent(msg: Msg.Gesture) {
+        val side = when (msg.side) {
+            1 -> GestureSide.LEFT
+            2 -> GestureSide.RIGHT
+            else -> null
+        }
+        val gesture = when (msg.act) {
+            0, 1 -> Gesture.SINGLE_TAP
+            2 -> Gesture.DOUBLE_TAP
+            3 -> Gesture.TRIPLE_TAP
+            4 -> Gesture.TAP_HOLD
+            5, 7, 8 -> Gesture.SLIDE
+            6 -> Gesture.EXTRA_LONG_PRESS
+            else -> null
+        }
+        if (side != null && gesture != null) {
+            val actions = GestureConfigStore.load(context, side, gesture)
+            val isCustom = actions.contains(GestureAction.CUSTOM_APP)
+            val targetPkg = if (isCustom) {
+                GestureConfigStore.getCustomApp(context, side, gesture)
+            } else if (gesture == Gesture.TAP_HOLD) {
+                val sharedActions = GestureConfigStore.load(context, GestureSide.LEFT, gesture)
+                if (sharedActions.contains(GestureAction.CUSTOM_APP)) {
+                    GestureConfigStore.getCustomApp(context, GestureSide.LEFT, gesture)
+                } else null
+            } else null
+
+            if (!targetPkg.isNullOrEmpty()) {
+                launchCustomApp(targetPkg)
+            }
+        }
+    }
+
+    private fun launchCustomApp(packageName: String) {
+        handler.post {
+            try {
+                try {
+                    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                    if (powerManager?.isInteractive == false) {
+                        @Suppress("DEPRECATION")
+                        val wl = powerManager.newWakeLock(
+                            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                            "quickbuds:custom_app_gesture"
+                        )
+                        wl.acquire(3000)
+                    }
+                } catch (e: Exception) {
+                    log("CUSTOM APP: WakeLock failed: ${e.message}")
+                }
+
+                val pm = context.packageManager
+                val launchIntent = pm.getLaunchIntentForPackage(packageName)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                } ?: run {
+                    log("CUSTOM APP: No launch intent for $packageName")
+                    return@post
+                }
+                log("CUSTOM APP: Launching $packageName")
+                try {
+                    context.startActivity(launchIntent)
+                } catch (e: Exception) {
+                    log("CUSTOM APP: direct startActivity failed: ${e.message}")
+                }
+                try {
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+                    val pi = PendingIntent.getActivity(context, packageName.hashCode(), launchIntent, flags)
+                    pi.send()
+                } catch (e: Exception) {
+                    log("CUSTOM APP: pi.send failed: ${e.message}")
+                }
+            } catch (e: Exception) {
+                log("CUSTOM APP: Failed to launch $packageName: ${e.message}")
             }
         }
     }

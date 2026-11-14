@@ -222,6 +222,12 @@ enum class GestureAction(
         R.string.gesture_action_anc_off_short,
         functionByte = 0x08,
         holdModeType = 1
+    ),
+    CUSTOM_APP(
+        R.string.gesture_action_custom_app,
+        R.string.gesture_action_custom_app_short,
+        functionByte = 0x00,
+        supportBit = 16384
     );
 
     /** Label for the row summary — the short form when one is defined. */
@@ -324,7 +330,7 @@ class GestureModel private constructor(
     fun holdTypes(): List<Int> = GestureSide.values().map { holdType(it) }.distinct()
 
     /** A per-bud hold's non-noise choice that a key-function byte stands for. */
-    fun holdChoiceFor(fn: Int): GestureAction? = holdChoices.filter { it != HOLD_NOISE }
+    fun holdChoiceFor(fn: Int): GestureAction? = holdChoices.filter { it != HOLD_NOISE && it != HOLD_CUSTOM_APP }
         .map { bit -> GestureAction.values().first { it.supportBit == bit } }
         .firstOrNull { functionByte(it) == fn }
 
@@ -332,6 +338,8 @@ class GestureModel private constructor(
         private const val BUDS4 = "065414"
         /** The noise cycle's bit among [holdChoices]. */
         const val HOLD_NOISE = 128
+        /** Custom app choice for hold gestures. */
+        const val HOLD_CUSTOM_APP = 16384
 
         /** Every tap gesture option available in the UI. */
         val ALL_TAP_ACTIONS = listOf(
@@ -346,12 +354,14 @@ class GestureModel private constructor(
             GestureAction.SWITCH_TRACK,
             GestureAction.SWITCH_DEVICE,
             GestureAction.GAME_MODE,
-            GestureAction.ANC_ON
+            GestureAction.ANC_ON,
+            GestureAction.CUSTOM_APP
         )
 
         /** Every hold option available in the UI. */
         val ALL_HOLD_CHOICES = listOf(
             HOLD_NOISE,
+            HOLD_CUSTOM_APP,
             512,  // None
             4,    // Play / Pause
             32,   // Previous track
@@ -514,6 +524,26 @@ object GestureConfigStore {
             .apply()
     }
 
+    fun getCustomApp(context: Context, side: GestureSide, gesture: Gesture): String? =
+        prefs(context).getString(key(context, side, gesture) + "_custom_app", null)
+
+    fun getCustomAppLabel(context: Context, side: GestureSide, gesture: Gesture): String? =
+        prefs(context).getString(key(context, side, gesture) + "_custom_app_label", null)
+
+    fun saveCustomApp(context: Context, side: GestureSide, gesture: Gesture, packageName: String, label: String) {
+        prefs(context).edit()
+            .putString(key(context, side, gesture) + "_custom_app", packageName)
+            .putString(key(context, side, gesture) + "_custom_app_label", label)
+            .apply()
+    }
+
+    fun clearCustomApp(context: Context, side: GestureSide, gesture: Gesture) {
+        prefs(context).edit()
+            .remove(key(context, side, gesture) + "_custom_app")
+            .remove(key(context, side, gesture) + "_custom_app_label")
+            .apply()
+    }
+
     /**
      * Summary of a binding, for the row's right-hand value.
      *
@@ -521,10 +551,22 @@ object GestureConfigStore {
      * what a gesture does, and up to four actions are joined into it. Full names made
      * it wrap, and a wrapped value made the row taller than its neighbours.
      */
-    fun describe(context: Context, actions: List<GestureAction>): String = when {
+    fun describe(
+        context: Context,
+        side: GestureSide? = null,
+        gesture: Gesture? = null,
+        actions: List<GestureAction>
+    ): String = when {
+        actions.contains(GestureAction.CUSTOM_APP) -> {
+            val label = if (side != null && gesture != null) getCustomAppLabel(context, side, gesture) else null
+            if (!label.isNullOrEmpty()) "${context.getString(R.string.gesture_action_custom_app)}: $label"
+            else context.getString(R.string.gesture_action_custom_app)
+        }
         actions.isEmpty() -> context.getString(R.string.gesture_not_set)
         else -> actions.joinToString(", ") { context.getString(it.summaryLabelRes()) }
     }
+
+    fun describe(context: Context, actions: List<GestureAction>): String = describe(context, null, null, actions)
 
     /**
      * The slot a (side, gesture) binding actually lives in on the buds — NOT restricted to
@@ -564,6 +606,7 @@ object GestureConfigStore {
         for (side in GestureSide.values()) {
             for ((gesture, options) in model.rows) {
                 if (gesture == Gesture.TAP_HOLD) continue
+                if (load(context, side, gesture) == listOf(GestureAction.CUSTOM_APP)) continue
                 val entry = deviceEntryFor(table, side, gesture.keyFnAction) ?: continue
                 val action = options.firstOrNull { model.functionByte(it) == entry.function }
                     ?: continue
@@ -591,6 +634,7 @@ object GestureConfigStore {
         val model = GestureModel.of(context)
         if (model.perBudHold) {
             for (side in GestureSide.values()) {
+                if (load(context, side, Gesture.TAP_HOLD) == listOf(GestureAction.CUSTOM_APP)) continue
                 val fn = deviceEntryFor(table, side, Gesture.TAP_HOLD.keyFnAction)?.function ?: continue
                 val actions = if (fn == 0x08) model.holdActions(masks[model.holdType(side)] ?: continue)
                     else listOfNotNull(model.holdChoiceFor(fn))
@@ -602,7 +646,9 @@ object GestureConfigStore {
             deviceEntryFor(table, it, Gesture.TAP_HOLD.keyFnAction)?.function == 0x08
         }
         if (!bound) {
-            save(context, GestureSide.LEFT, Gesture.TAP_HOLD, emptyList())
+            if (load(context, GestureSide.LEFT, Gesture.TAP_HOLD) != listOf(GestureAction.CUSTOM_APP)) {
+                save(context, GestureSide.LEFT, Gesture.TAP_HOLD, emptyList())
+            }
             return
         }
         val actions = model.holdActions(masks[OpoProtocol.HOLD_TYPE_SHARED] ?: return)

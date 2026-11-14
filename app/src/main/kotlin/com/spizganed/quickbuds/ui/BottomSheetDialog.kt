@@ -4,12 +4,14 @@ import android.app.Activity
 import android.app.Dialog
 import android.graphics.Shader
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.text.InputFilter
 import android.view.Gravity
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -55,6 +57,7 @@ class BottomSheetDialog(private val activity: Activity) {
         val label: String,
         val selected: Boolean,
         val enabled: Boolean = true,
+        val icon: Drawable? = null,
         val onClick: (() -> Unit)? = null
     )
 
@@ -294,7 +297,15 @@ class BottomSheetDialog(private val activity: Activity) {
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52f))
             setPadding(dp(14f), 0, dp(14f), 0)
+            val iconView = ImageView(activity).apply {
+                tag = "sheet_row_icon"
+                layoutParams = LinearLayout.LayoutParams(dp(28f), dp(28f)).apply { marginEnd = dp(12f) }
+                visibility = if (item.icon != null) View.VISIBLE else View.GONE
+                setImageDrawable(item.icon)
+            }
+            addView(iconView)
             addView(TextView(activity).apply {
+                tag = "sheet_row_label"
                 textSize = 15f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -309,7 +320,13 @@ class BottomSheetDialog(private val activity: Activity) {
         val secondary = ThemeRes.color(activity, R.attr.appColorTextSecondary)
         val accent = ThemeRes.color(activity, R.attr.appColorAccent)
         val glassRows = ThemeRes.glass(activity) && !ThemeRes.nothing(activity)
-        val label = row.getChildAt(0) as TextView
+        val icon = row.findViewWithTag<ImageView>("sheet_row_icon")
+        if (icon != null) {
+            icon.visibility = if (item.icon != null) View.VISIBLE else View.GONE
+            icon.setImageDrawable(item.icon)
+        }
+        val label = (row.findViewWithTag<TextView>("sheet_row_label")
+            ?: (if (row.childCount > 1 && row.getChildAt(1) is TextView) row.getChildAt(1) else row.getChildAt(0)) as TextView)
         if (label.text.toString() != item.label) label.text = item.label
 
         row.isClickable = item.enabled
