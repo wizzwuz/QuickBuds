@@ -21,10 +21,10 @@ internal object Commands {
      * list with others.
      */
     fun notifyIds(fitTest: Boolean, golden: Boolean, personalNoise: Boolean, offered: Set<Int>?): List<Int> =
-        (listOf(0x01, 0x02, 0x03) + (if (fitTest) listOf(OpoProtocol.EVT_FIT_TEST) else emptyList()) +
+        (listOf(0x01, 0x02, 0x03, UserInteractionParser.EVT_USER_INTERACTION) + (if (fitTest) listOf(OpoProtocol.EVT_FIT_TEST) else emptyList()) +
             (if (golden) listOf(OpoProtocol.EVT_GOLDEN_STATUS) else emptyList()) +
             (if (personalNoise) listOf(OpoProtocol.EVT_PERSONAL_NOISE) else emptyList()))
-            .filter { offered == null || it in offered }
+            .filter { offered == null || it in offered || it == UserInteractionParser.EVT_USER_INTERACTION }
 
     /**
      * Subscribe to spontaneous 0x0204 notifications (battery + wearing + ANC).

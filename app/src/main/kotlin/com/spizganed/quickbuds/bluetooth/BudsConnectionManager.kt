@@ -47,7 +47,10 @@ import com.spizganed.quickbuds.protocol.UserInteractionParser
 import com.spizganed.quickbuds.ui.GestureConfigStore
 import com.spizganed.quickbuds.ui.GestureModel
 import com.spizganed.quickbuds.ui.OnCallConfigStore
-import com.spizganed.quickbuds.ui.ThemeRes
+import android.app.ActivityOptions
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.os.PowerManager
 import com.spizganed.quickbuds.protocol.Commands
@@ -2140,35 +2143,40 @@ class BudsConnectionManager(private val context: Context) {
     }
 
     private fun handleGestureEvent(msg: Msg.Gesture) {
+        log("BTN EVT: side=${msg.side} act=${msg.act} func=${msg.func} btn=${msg.button}")
         val side = when (msg.side) {
             1 -> GestureSide.LEFT
             2 -> GestureSide.RIGHT
             else -> null
         }
-        val gesture = when (msg.act) {
-            0, 1 -> Gesture.SINGLE_TAP
-            2 -> Gesture.DOUBLE_TAP
-            3 -> Gesture.TRIPLE_TAP
-            4 -> Gesture.TAP_HOLD
-            5, 7, 8 -> Gesture.SLIDE
-            6 -> Gesture.EXTRA_LONG_PRESS
-            else -> null
+        val gesturesToCheck = when (msg.act) {
+            0, 1 -> listOf(Gesture.SINGLE_TAP)
+            2 -> listOf(Gesture.DOUBLE_TAP)
+            3 -> listOf(Gesture.TRIPLE_TAP)
+            4 -> listOf(Gesture.TAP_HOLD, Gesture.LONG_PRESS)
+            5, 7, 8 -> listOf(Gesture.SLIDE)
+            6 -> listOf(Gesture.EXTRA_LONG_PRESS)
+            else -> emptyList()
         }
-        if (side != null && gesture != null) {
-            val actions = GestureConfigStore.load(context, side, gesture)
-            val isCustom = actions.contains(GestureAction.CUSTOM_APP)
-            val targetPkg = if (isCustom) {
-                GestureConfigStore.getCustomApp(context, side, gesture)
-            } else if (gesture == Gesture.TAP_HOLD) {
-                val sharedActions = GestureConfigStore.load(context, GestureSide.LEFT, gesture)
-                if (sharedActions.contains(GestureAction.CUSTOM_APP)) {
-                    GestureConfigStore.getCustomApp(context, GestureSide.LEFT, gesture)
-                } else null
-            } else null
-
-            if (!targetPkg.isNullOrEmpty()) {
-                launchCustomApp(targetPkg)
+        val sidesToCheck = listOfNotNull(side, GestureSide.LEFT, GestureSide.RIGHT).distinct()
+        var targetPkg: String? = null
+        for (g in gesturesToCheck) {
+            for (s in sidesToCheck) {
+                val actions = GestureConfigStore.load(context, s, g)
+                if (actions.contains(GestureAction.CUSTOM_APP)) {
+                    val pkg = GestureConfigStore.getCustomApp(context, s, g)
+                    if (!pkg.isNullOrEmpty()) {
+                        targetPkg = pkg
+                        break
+                    }
+                }
             }
+            if (targetPkg != null) break
+        }
+
+        if (!targetPkg.isNullOrEmpty()) {
+            log("CUSTOM APP: Triggered for act=${msg.act} side=${msg.side} -> $targetPkg")
+            launchCustomApp(targetPkg)
         }
     }
 
@@ -2191,23 +2199,64 @@ class BudsConnectionManager(private val context: Context) {
 
                 val pm = context.packageManager
                 val launchIntent = pm.getLaunchIntentForPackage(packageName)?.apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 } ?: run {
                     log("CUSTOM APP: No launch intent for $packageName")
                     return@post
                 }
                 log("CUSTOM APP: Launching $packageName")
+
+                val bOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ActivityOptions.makeBasic().apply {
+                        setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    }.toBundle()
+                } else null
+
                 try {
-                    context.startActivity(launchIntent)
+                    if (bOptions != null) {
+                        context.startActivity(launchIntent, bOptions)
+                    } else {
+                        context.startActivity(launchIntent)
+                    }
                 } catch (e: Exception) {
                     log("CUSTOM APP: direct startActivity failed: ${e.message}")
                 }
+
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+                val pi = PendingIntent.getActivity(context, packageName.hashCode(), launchIntent, flags)
                 try {
-                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-                    val pi = PendingIntent.getActivity(context, packageName.hashCode(), launchIntent, flags)
-                    pi.send()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bOptions != null) {
+                        pi.send(context, 0, null, null, null, null, bOptions)
+                    } else {
+                        pi.send()
+                    }
                 } catch (e: Exception) {
                     log("CUSTOM APP: pi.send failed: ${e.message}")
+                }
+
+                try {
+                    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val chId = "quickbuds_gesture_launch"
+                        val ch = NotificationChannel(chId, "Gesture Launch", NotificationManager.IMPORTANCE_HIGH).apply {
+                            setShowBadge(false)
+                            enableLights(false)
+                            enableVibration(false)
+                            setSound(null, null)
+                        }
+                        nm.createNotificationChannel(ch)
+                        val notif = Notification.Builder(context, chId)
+                            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                            .setContentTitle(context.getString(R.string.gesture_action_custom_app))
+                            .setContentIntent(pi)
+                            .setFullScreenIntent(pi, true)
+                            .setAutoCancel(true)
+                            .build()
+                        nm.notify(9999, notif)
+                        handler.postDelayed({ nm.cancel(9999) }, 2000)
+                    }
+                } catch (e: Exception) {
+                    log("CUSTOM APP: notification fallback failed: ${e.message}")
                 }
             } catch (e: Exception) {
                 log("CUSTOM APP: Failed to launch $packageName: ${e.message}")

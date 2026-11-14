@@ -200,6 +200,18 @@
             android:configChanges="locale|layoutDirection|keyboard|keyboardHidden|navigation|touchscreen|smallestScreenSize|screenLayout"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".bluetooth.VoiceCommandActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!--
           FileProvider for the app-update flow. The downloaded APK lives in the
           app's private cache, which the package installer cannot read directly,
