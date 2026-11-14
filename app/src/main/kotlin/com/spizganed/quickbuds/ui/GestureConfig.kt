@@ -201,7 +201,7 @@ enum class GestureAction(
     // key-function bind (`functionByte`, bind/unbind the gesture to "cycles ANC" at all) and the
     // mask ([GestureModel.holdMask], which modes it cycles through) — two separate commands on
     // purpose, so a failure in either is attributable, never merged into one "save".
-    ANC_ON(R.string.gesture_action_anc_on, R.string.gesture_action_anc_on_short, functionByte = 0x08, holdModeType = 5),
+    ANC_ON(R.string.anc_section, R.string.gesture_action_anc_on_short, functionByte = 0x08, supportBit = 128, holdModeType = 5),
     /** `[VENDOR]` "strong" / "weak" as top-level modes of their own (Buds Z2, Enco X). */
     ANC_HIGH(R.string.widget_mode_anc_high, R.string.anc_mode_high, functionByte = 0x08, holdModeType = 4),
     ANC_LOW(R.string.widget_mode_anc_low, R.string.anc_mode_low, functionByte = 0x08, holdModeType = 3),
@@ -332,6 +332,39 @@ class GestureModel private constructor(
         private const val BUDS4 = "065414"
         /** The noise cycle's bit among [holdChoices]. */
         const val HOLD_NOISE = 128
+
+        /** Every tap gesture option available in the UI. */
+        val ALL_TAP_ACTIONS = listOf(
+            GestureAction.NONE,
+            GestureAction.PLAY_PAUSE,
+            GestureAction.PREV_TRACK,
+            GestureAction.NEXT_TRACK,
+            GestureAction.VOICE_ASSISTANT,
+            GestureAction.VOLUME_UP,
+            GestureAction.VOLUME_DOWN,
+            GestureAction.VOLUME,
+            GestureAction.SWITCH_TRACK,
+            GestureAction.SWITCH_DEVICE,
+            GestureAction.GAME_MODE,
+            GestureAction.ANC_ON
+        )
+
+        /** Every hold option available in the UI. */
+        val ALL_HOLD_CHOICES = listOf(
+            HOLD_NOISE,
+            512,  // None
+            4,    // Play / Pause
+            32,   // Previous track
+            64,   // Next track
+            1,    // Voice assistant
+            8,    // Volume up
+            16,   // Volume down
+            1024, // Volume
+            2048, // Switch track
+            4096, // Switch device
+            8192  // Game mode
+        )
+
         /** `[VENDOR]` HeyMelody's option order (`f2769a`), limited to the options the app has. */
         private val ORDER = intArrayOf(512, 4, 32, 64, 1, 8, 16, 1024, 2048, 4096, 8192)
         private val EMPTY = GestureModel(emptyMap(), emptyMap(), emptyList(), false)
@@ -370,10 +403,7 @@ class GestureModel private constructor(
                     holdMin = entry.optInt("minSelected").takeIf { it > 0 }
                         ?: if (p.brand == "OnePlus" || longPressType != 0) 2 else 1
                 } else {
-                    val support = entry.optInt("options")
-                    val options = ORDER.filter { support and it != 0 }
-                        .map { bit -> GestureAction.values().first { it.supportBit == bit } }
-                    if (options.isNotEmpty()) rows[gesture] = options
+                    rows[gesture] = ALL_TAP_ACTIONS
                 }
             }
             // `[VENDOR]` a callControl row is only a choice if it offers None (512); the others
@@ -382,11 +412,10 @@ class GestureModel private constructor(
             fun hasCall(action: Int) = (0 until call.length()).map { call.getJSONObject(it) }
                 .any { it.getInt("gesture") == action && it.optInt("options") and 512 != 0 }
             val onCall = OnCallGesture.values().filter { hasCall(it.callAction) }
-            // `[VENDOR]` order, without spy tap (8388608), which needs a phone-side feature.
-            val holdChoices = if (longPressType == 0) emptyList()
-                else intArrayOf(512, HOLD_NOISE, 1, 8192).filter { longPressType and it != 0 }
+            val holdChoices = if (holdBits.isNotEmpty()) ALL_HOLD_CHOICES else ALL_HOLD_CHOICES.filter { it != HOLD_NOISE }
+            val perBud = longPressType != 0 || rows.containsKey(Gesture.TAP_HOLD)
             return GestureModel(rows, holdBits, onCall, p.oldTrackBytes,
-                longPressType != 0, holdChoices, holdMin, levelBits, p.sharedHold, p.oneButton, p.bothHold)
+                perBud, holdChoices, holdMin, levelBits, p.sharedHold, p.oneButton, p.bothHold)
         }
 
         /**
@@ -463,6 +492,7 @@ object GestureConfigStore {
 
     fun load(context: Context, side: GestureSide, gesture: Gesture): List<GestureAction> {
         val raw = prefs(context).getString(key(context, side, gesture), null)
+            ?: if (gesture == Gesture.TAP_HOLD) prefs(context).getString("gesture_SHARED_TAP_HOLD", null) else null
             ?: return defaultFor(gesture)
         if (raw.isEmpty()) return emptyList()
         // Unknown names are dropped rather than crashing, so a value written by a

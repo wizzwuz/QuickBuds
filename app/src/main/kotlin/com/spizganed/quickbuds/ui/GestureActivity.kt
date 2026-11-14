@@ -460,7 +460,10 @@ class GestureActivity : Activity() {
 
         // ONE sheet, updated in place. Toggling rebuilds only the rows and the
         // message, so the sheet does not stack or flicker on every tap.
-        val working = options.filter { selected.contains(it) }.toMutableList()
+        val working = options.filter { selected.contains(it) }.toMutableList().ifEmpty {
+            if (options.size >= model.holdMin) options.take(maxOf(model.holdMin, 2)).toMutableList()
+            else options.toMutableList()
+        }
 
         val sheet = BottomSheetDialog(this)
         sheet.title(getString(gesture.labelRes))
