@@ -47,6 +47,7 @@ import com.spizganed.quickbuds.protocol.UserInteractionParser
 import com.spizganed.quickbuds.ui.GestureConfigStore
 import com.spizganed.quickbuds.ui.GestureModel
 import com.spizganed.quickbuds.ui.OnCallConfigStore
+import com.spizganed.quickbuds.ui.ThemeRes
 import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
