@@ -49,7 +49,6 @@ import com.spizganed.quickbuds.ui.GestureModel
 import com.spizganed.quickbuds.ui.OnCallConfigStore
 import com.spizganed.quickbuds.ui.ThemeRes
 import android.app.PendingIntent
-import android.os.Build
 import android.os.PowerManager
 import com.spizganed.quickbuds.protocol.Commands
 import com.spizganed.quickbuds.protocol.Replies
