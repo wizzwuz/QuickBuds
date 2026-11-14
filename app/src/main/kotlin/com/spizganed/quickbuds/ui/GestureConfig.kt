@@ -491,9 +491,10 @@ object GestureConfigStore {
     }
 
     fun load(context: Context, side: GestureSide, gesture: Gesture): List<GestureAction> {
-        val raw = prefs(context).getString(key(context, side, gesture), null)
-            ?: if (gesture == Gesture.TAP_HOLD) prefs(context).getString("gesture_SHARED_TAP_HOLD", null) else null
-            ?: return defaultFor(gesture)
+        val sp = prefs(context)
+        val rawPref = sp.getString(key(context, side, gesture), null)
+            ?: if (gesture == Gesture.TAP_HOLD) sp.getString("gesture_SHARED_TAP_HOLD", null) else null
+        val raw = rawPref ?: return defaultFor(gesture)
         if (raw.isEmpty()) return emptyList()
         // Unknown names are dropped rather than crashing, so a value written by a
         // future version of this enum cannot brick the screen.
