@@ -874,7 +874,6 @@ class BudsService : Service(), BudsConnectionManager.Listener {
         WidgetStateStore.write(this, st)
         AncWidgetProvider.refreshAll(this)
         AncQuickSettingsTileService.requestRefresh(this)
->>>>>>> 81672040 (Add three-mode ANC Quick Settings tile and long-press floating picker)
     }
 
     companion object {
