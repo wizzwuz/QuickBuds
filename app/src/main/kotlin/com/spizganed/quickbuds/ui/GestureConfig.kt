@@ -226,7 +226,7 @@ enum class GestureAction(
     CUSTOM_APP(
         R.string.gesture_action_custom_app,
         R.string.gesture_action_custom_app_short,
-        functionByte = 0x00,
+        functionByte = 0x03,
         supportBit = 16384
     );
 
@@ -651,6 +651,7 @@ object GestureConfigStore {
             }
             return
         }
+        if (load(context, GestureSide.LEFT, Gesture.TAP_HOLD) == listOf(GestureAction.CUSTOM_APP)) return
         val actions = model.holdActions(masks[OpoProtocol.HOLD_TYPE_SHARED] ?: return)
         if (actions.isNotEmpty()) save(context, GestureSide.LEFT, Gesture.TAP_HOLD, actions)
     }

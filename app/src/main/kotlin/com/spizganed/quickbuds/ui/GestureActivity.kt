@@ -552,6 +552,10 @@ class GestureActivity : Activity() {
             when (bit) {
                 GestureModel.HOLD_NOISE -> {
                     GestureConfigStore.clearCustomApp(this, side, Gesture.TAP_HOLD)
+                    if (!model.perBudHold) {
+                        val otherSide = if (side == GestureSide.LEFT) GestureSide.RIGHT else GestureSide.LEFT
+                        GestureConfigStore.clearCustomApp(this, otherSide, Gesture.TAP_HOLD)
+                    }
                     showActionDialog(Gesture.TAP_HOLD, noiseModes = true)
                 }
                 GestureModel.HOLD_CUSTOM_APP -> {
@@ -559,6 +563,10 @@ class GestureActivity : Activity() {
                 }
                 else -> {
                     GestureConfigStore.clearCustomApp(this, side, Gesture.TAP_HOLD)
+                    if (!model.perBudHold) {
+                        val otherSide = if (side == GestureSide.LEFT) GestureSide.RIGHT else GestureSide.LEFT
+                        GestureConfigStore.clearCustomApp(this, otherSide, Gesture.TAP_HOLD)
+                    }
                     val action = GestureAction.values().first { it.supportBit == bit }
                     GestureConfigStore.save(this, side, Gesture.TAP_HOLD, listOf(action))
                     writeToBuds(Gesture.TAP_HOLD, listOf(action))
@@ -596,6 +604,11 @@ class GestureActivity : Activity() {
                     onClick = {
                         GestureConfigStore.saveCustomApp(this@GestureActivity, side, gesture, app.pkg, app.label)
                         GestureConfigStore.save(this@GestureActivity, side, gesture, listOf(GestureAction.CUSTOM_APP))
+                        if (gesture == Gesture.TAP_HOLD && !model.perBudHold) {
+                            val otherSide = if (side == GestureSide.LEFT) GestureSide.RIGHT else GestureSide.LEFT
+                            GestureConfigStore.saveCustomApp(this@GestureActivity, otherSide, gesture, app.pkg, app.label)
+                            GestureConfigStore.save(this@GestureActivity, otherSide, gesture, listOf(GestureAction.CUSTOM_APP))
+                        }
                         writeToBuds(gesture, listOf(GestureAction.CUSTOM_APP))
                         render()
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@GestureActivity)) {
