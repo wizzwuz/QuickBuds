@@ -144,9 +144,11 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
                     textSize = 12f
                     setPadding(0, dp(2f), 0, 0)
                 })
-                if (manages && !self) {
+                if (d.connected || (manages && !self)) {
                     background = ThemeRes.ripple(context)
-                    setOnClickListener { confirmConnect(d) }
+                    setOnClickListener {
+                        if (d.connected) confirmDisconnect(d) else confirmConnect(d)
+                    }
                 }
             })
         }
@@ -156,6 +158,36 @@ class DualDeviceActivity : Activity(), BudsConnectionManager.Listener {
             SettingRowFactory.build(
                 this, 0, R.string.dual_add_title, 0, SettingRowFactory.buildChevron(this)
             ) { showAddDevice() }
+        )
+    }
+
+    /** Connected-device rows always ask before sending the buds' disconnect command. */
+    private fun confirmDisconnect(d: BudsConnectionManager.PairedDevice) {
+        val own = ownName()
+        val self = d.thisPhone || (own != null && d.name.equals(own, ignoreCase = true))
+        ConfirmDialog.show(
+            this,
+            getString(R.string.disconnect_or_not),
+            null,
+            getString(R.string.disconnect_ok),
+            cancelRes = R.string.dialog_cancel,
+            onConfirm = {
+                if (self) {
+                    try {
+                        startService(
+                            Intent(this, BudsService::class.java).setAction(
+                                BudsService.ACTION_FORCE_DISCONNECT
+                            ).putExtra(BudsService.EXTRA_WITH_AUDIO, true)
+                                .putExtra(BudsService.EXTRA_USER_CONNECT, true)
+                        )
+                    } catch (_: Exception) {}
+                    window.decorView.postDelayed({
+                        manager?.disconnect()
+                    }, 250)
+                } else {
+                    manager?.connectDevice(d.mac, false)
+                }
+            }
         )
     }
 
