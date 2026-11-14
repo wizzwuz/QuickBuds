@@ -7,6 +7,8 @@ on:
       - main
       - 'experimental/**'
       - 'feature/**'
+      - test
+      - 'test/**'
     paths:
       - 'app/**'
       - 'gradle/**'
