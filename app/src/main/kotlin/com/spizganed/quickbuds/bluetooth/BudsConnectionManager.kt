@@ -971,7 +971,7 @@ class BudsConnectionManager(private val context: Context) {
      * One user action on a setting. The engine sends the writes in order and waits for the confirmation
      * kind given; [key] is the control that shows "applying". See docs/FEATURE-SYNC.md. Screens call [setFeature].
      */
-    private fun requestSetting(key: Int, writes: List<Pair<Int, Int>>, confirm: FeatureSync.Confirm, restarts: Boolean = false) {
+    internal fun requestSetting(key: Int, writes: List<Pair<Int, Int>>, confirm: FeatureSync.Confirm, restarts: Boolean = false) {
         if (key !in FeatureSyncConfig.ENABLED) {
             // This key is switched back to the old path: one write per pair, then a status read.
             setFeatures(*writes.map { it.first to (it.second == 1) }.toTypedArray())
