@@ -9,6 +9,8 @@ on:
       - 'feature/**'
       - test
       - 'test/**'
+      - dev
+      - 'dev/**'
     paths:
       - 'app/**'
       - 'gradle/**'
